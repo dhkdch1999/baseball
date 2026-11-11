@@ -35,14 +35,15 @@ function pickType(rng, batter, pitcher, q, inZone) {
  * @returns {ballType, dir, fielder, outcome, q, depth}
  *   outcome: '1B'|'2B'|'3B'|'HR'|'OUT'|'E'
  */
-export function resolveBattedBall(rng, { batter, pitcher, pitch, defense }) {
+export function resolveBattedBall(rng, { batter, pitcher, pitch, defense, shift = 'normal', hitAndRun = false }) {
   const br = batter.ratings;
   const zStuff = z(pitch.grade) - (pitch.pen || 0);
   const inZone = pitch.inZone;
   // 타구 질
   const q = rng.normal(0, 1) * 0.85
-    + 0.30 * z(br.contact) + 0.22 * z(br.power)
-    - 0.25 * zStuff + (pitch.plat || 0) * 1.2 - (inZone ? 0 : 0.35);
+    + 0.25 * z(br.contact) + 0.2 * z(br.power)
+    - 0.25 * zStuff + (pitch.plat || 0) * 1.2 - (inZone ? 0 : 0.35)
+    + (batter.condition || 0) * 0.02 - (hitAndRun ? 0.25 : 0);
 
   const ballType = pickType(rng, batter, pitcher, q, inZone);
   const dir = pickDir(rng, batter, ballType);
@@ -50,7 +51,7 @@ export function resolveBattedBall(rng, { batter, pitcher, pitch, defense }) {
   // 홈런
   if (ballType === 'FB' || ballType === 'LD') {
     const base = ballType === 'FB' ? BATTED.hrPerFB : BATTED.hrPerLD;
-    const hrL = logit(base) + BATTED.hrQualitySpread * (0.75 * z(br.power) + 0.45 * q - 0.15 * zStuff);
+    const hrL = logit(base) + BATTED.hrQualitySpread * (0.6 * z(br.power) + 0.45 * q - 0.15 * zStuff);
     if (rng.chance(sigmoid(hrL))) {
       return { ballType, dir, fielder: OF_FIELDER[dir] || 'CF', outcome: 'HR', q, depth: 'out' };
     }
@@ -72,7 +73,17 @@ export function resolveBattedBall(rng, { batter, pitcher, pitch, defense }) {
   const isInfieldLD = ballType === 'LD' && !['LF', 'CF', 'RF'].includes(fielder);
 
   let hitL = logit(isInfieldLD ? 0.25 : BATTED.hit[ballType]) + BATTED.qualityHitSpread[ballType] * q - BATTED.defenseSpread * zDef * 2;
-  if (ballType === 'GB') hitL += 0.22 * z(br.speed); // 내야안타
+  if (ballType === 'GB') {
+    hitL += 0.22 * z(br.speed); // 내야안타
+    if (shift === 'in') hitL += 0.45; // 전진수비: 땅볼이 빠져나가기 쉬움
+    if (shift === 'pull') {
+      // 당겨치는 쪽으로 수비 이동: 당긴 땅볼은 잡히고, 밀어친 땅볼은 빈 곳으로
+      const pullSide = batter.bats === 'L' ? ['R', 'RC'] : ['L', 'LC'];
+      const pushSide = batter.bats === 'L' ? ['L', 'LC'] : ['R', 'RC'];
+      if (pullSide.includes(dir)) hitL -= 0.45;
+      else if (pushSide.includes(dir)) hitL += 0.35;
+    }
+  }
   const depth = q > 0.7 ? 'deep' : q < -0.5 ? 'shallow' : 'medium';
 
   if (!rng.chance(sigmoid(hitL))) {

@@ -3,57 +3,21 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>야구 감독 — 문자중계 시뮬레이션</title>
+  <title>야구 감독 — KBO 구단 운영 시뮬레이션</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚾</text></svg>" />
   <link rel="stylesheet" href="css/base.css" />
   <link rel="stylesheet" href="css/broadcast.css" />
+  <link rel="stylesheet" href="css/app.css" />
 </head>
 <body>
   <header class="topbar">
-    <h1>야구 감독 <small>문자중계 시뮬레이션 · 1단계</small></h1>
-    <div class="league-seed">
-      <label>리그 시드 <input id="leagueSeed" value="kbo-1" size="10" /></label>
-      <button id="btnNewLeague" class="ghost">리그 다시 생성</button>
-    </div>
+    <h1>⚾ 야구 감독</h1>
+    <div id="hdrInfo" class="hdr-info"></div>
   </header>
-
-  <main>
-    <!-- 경기 전 -->
-    <section id="pregame">
-      <div class="matchup">
-        <label>원정 <select id="awaySel"></select></label>
-        <span class="vs">vs</span>
-        <label>홈 <select id="homeSel"></select></label>
-        <label>경기 시드 <input id="gameSeed" size="8" /></label>
-        <button id="btnDice" class="ghost" title="시드 랜덤">🎲</button>
-        <button id="btnStart" class="primary">경기 시작</button>
-      </div>
-      <div id="lineupPreview" class="lineups"></div>
-    </section>
-
-    <!-- 경기 중 -->
-    <section id="game" hidden>
-      <div id="scoreboard" class="scoreboard"></div>
-      <div class="situation">
-        <div id="diamond" class="diamond"></div>
-        <div id="bso" class="bso"></div>
-        <div id="matchupNow" class="matchup-now"></div>
-      </div>
-      <div class="controls">
-        <button id="btnPitch" class="primary" title="Space">1구</button>
-        <button id="btnPA" class="primary" title="Enter">1타석</button>
-        <button id="btnEnd">경기 끝까지</button>
-        <span class="spacer"></span>
-        <button id="btnBack" class="ghost">경기 선택으로</button>
-      </div>
-      <nav class="tabs">
-        <button data-tab="feed" class="active">문자중계</button>
-        <button data-tab="box">박스스코어</button>
-      </nav>
-      <div id="feed" class="feed"></div>
-      <div id="box" class="box" hidden></div>
-    </section>
-  </main>
-
+  <nav id="nav" class="mainnav" hidden></nav>
+  <main id="view"></main>
+  <div id="modal" hidden></div>
+  <div id="toast" class="toasts"></div>
   <noscript>JavaScript가 필요합니다.</noscript>
   <script type="module" src="js/main.js"></script>
 </body>

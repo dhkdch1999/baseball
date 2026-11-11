@@ -47,9 +47,9 @@ export const LEAGUE = {
   eyeSpreadZone: 0.08,
 
   // 컨택률 (스윙 시)
-  contactZone: 0.92,
+  contactZone: 0.925,
   contactOut: 0.77,
-  contactSpreadBat: 0.32,
+  contactSpreadBat: 0.27,
   contactSpreadPit: 0.30,
 
   // 컨택 시 파울 비율
@@ -69,10 +69,10 @@ export const BATTED = {
   // 타구 종류 기본 비율
   type: { GB: 0.44, LD: 0.21, FB: 0.27, PU: 0.08 },
   // 종류별 안타 확률 (홈런 제외, 평균 수비 기준)
-  hit: { GB: 0.29, LD: 0.74, FB: 0.19, PU: 0.015 },
+  hit: { GB: 0.30, LD: 0.75, FB: 0.19, PU: 0.015 },
   qualityHitSpread: { GB: 0.35, LD: 0.40, FB: 0.45, PU: 0.2 },
   // 뜬공 중 홈런 확률 (로짓 기본값 + 타구 질 계수)
-  hrPerFB: 0.054,
+  hrPerFB: 0.065,
   hrPerLD: 0.012,
   hrQualitySpread: 0.95,
   defenseSpread: 0.12, // 수비 1표준편차당 안타 확률 로짓 변화

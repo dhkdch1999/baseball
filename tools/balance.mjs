@@ -5,7 +5,7 @@
 //   node tools/balance.mjs --seasons 50       # 빠른 확인
 //   node tools/balance.mjs --seasons 200 --seed 7 --workers 4
 //
-// 1단계에는 일정 모듈이 없으므로 "시즌 = 팀당 144경기(상대별 16경기, 홈/원정 8경기씩)".
+// 시즌 = 실제 정규시즌 일정 144경기 (커리어 모드와 동일: 로테이션, 피로, 부상, AI 작전 포함).
 // 시즌마다 새 리그(선수)를 생성해서 특정 로스터에 치우치지 않게 한다.
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import os from 'node:os';
@@ -42,33 +42,28 @@ const KEYS = ['g', 'r', 'pa', 'ab', 'h', 'd', 't', 'hr', 'bb', 'hbp', 'so', 'sf'
 const zero = () => Object.fromEntries(KEYS.map((k) => [k, 0]));
 
 async function simSeason(seasonIdx, baseSeed) {
-  const { generateLeague } = await import('../js/data/teamGen.js');
-  const { Game } = await import('../js/sim/game.js');
-  const lg = generateLeague(`${baseSeed}-S${seasonIdx}`);
-  const T = lg.teams;
+  // 실제 커리어 모드와 같은 조건(일정·로테이션·피로·부상·AI 작전)으로 정규시즌 1회 진행
+  const { newCareer, allPlayers } = await import('../js/league/season.js');
+  const { advanceUntil } = await import('../js/league/career.js');
+  const lg = newCareer({ seed: `${baseSeed}-S${seasonIdx}`, myTeamId: 'LG' });
+  advanceUntil(lg, 'season');
   const acc = zero();
-  const rot = new Array(T.length).fill(0);
-  let gid = 0;
-  for (let rep = 0; rep < 8; rep++) {
-    for (let i = 0; i < T.length; i++) {
-      for (let j = 0; j < T.length; j++) {
-        if (i === j) continue;
-        const g = new Game({ away: T[i], home: T[j], seed: `${baseSeed}-S${seasonIdx}-G${gid++}`, verbose: false, rotationIndex: [rot[i]++, rot[j]++] });
-        const res = g.simulate();
-        acc.g++;
-        if (res.innings > 9) acc.extra++;
-        if (res.winner == null) acc.ties++;
-        for (const s of [0, 1]) {
-          acc.r += res.score[s];
-          acc.e += res.box.team[s].errors;
-          for (const l of res.box.bat[s].values()) {
-            acc.pa += l.pa; acc.ab += l.ab; acc.h += l.h; acc.d += l.d; acc.t += l.t; acc.hr += l.hr;
-            acc.bb += l.bb; acc.hbp += l.hbp; acc.so += l.so; acc.sf += l.sf; acc.sb += l.sb; acc.cs += l.cs; acc.gidp += l.gidp;
-          }
-          for (const l of res.box.pit[s].values()) { acc.np += l.np; acc.er += l.er; acc.outs += l.outs; }
-        }
-      }
+  const key = String(lg.season);
+  for (const day of lg.schedule) {
+    for (const g of day.games) {
+      const r = g.result;
+      acc.g++;
+      if (r.innings > 9) acc.extra++;
+      if (r.winner == null) acc.ties++;
+      acc.r += r.score[0] + r.score[1];
+      acc.e += r.line[0].e + r.line[1].e;
     }
+  }
+  for (const p of allPlayers(lg)) {
+    const e = p.stats?.[key];
+    if (!e) continue;
+    if (e.bat) for (const k of ['pa', 'ab', 'h', 'd', 't', 'hr', 'bb', 'hbp', 'so', 'sf', 'sb', 'cs', 'gidp']) acc[k] += e.bat[k];
+    if (e.pit) { acc.np += e.pit.np; acc.er += e.pit.er; acc.outs += e.pit.outs; }
   }
   return acc;
 }

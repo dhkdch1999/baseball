@@ -49,7 +49,7 @@ export function platoon(batter, pitcher) {
  * @returns {{type, ko, kmh, inZone, result, swung}}
  *   result: 'ball' | 'calledStrike' | 'swingStrike' | 'foul' | 'inPlay' | 'hbp'
  */
-export function throwPitch(rng, { batter, ps, count, leverage = 1 }) {
+export function throwPitch(rng, { batter, ps, count, leverage = 1, hitAndRun = false }) {
   const [b, s] = count;
   const key = `${b}-${s}`;
   const pit = ps.player;
@@ -85,12 +85,14 @@ export function throwPitch(rng, { batter, ps, count, leverage = 1 }) {
     const chaseBase = sigmoid(logit(LEAGUE.chase) + (LEAGUE.chaseCount[key] || 0));
     swingP = matchup(chaseBase, -zEye, LEAGUE.eyeSpreadChase, -zGrade, 0.22);
   }
+  if (hitAndRun) swingP = inZone ? 0.97 : 0.82; // 히트앤런: 무조건 휘두른다
   if (!rng.chance(swingP)) {
     return { ...base, inZone, result: inZone ? 'calledStrike' : 'ball', swung: false };
   }
 
   // 3) 컨택
-  const zBatContact = z(br.contact) * 0.65 + z(br.avoidK) * 0.35 + plat;
+  const zBatContact = z(br.contact) * 0.65 + z(br.avoidK) * 0.35 + plat
+    + (batter.condition || 0) * 0.02 + (hitAndRun ? 0.15 : 0);
   const contactBase = inZone ? LEAGUE.contactZone : LEAGUE.contactOut;
   const contactP = matchup(contactBase, zBatContact, LEAGUE.contactSpreadBat, zGrade, LEAGUE.contactSpreadPit);
   if (!rng.chance(contactP)) {
@@ -109,7 +111,9 @@ export function throwPitch(rng, { batter, ps, count, leverage = 1 }) {
 /** 투수 한계 투구 수 */
 export function pitchLimit(p, asStarter) {
   const st = p.ratings.stamina;
-  return asStarter ? Math.round(55 + st * 0.75) : Math.round(14 + st * 0.45);
+  const base = asStarter ? 55 + st * 0.75 : 14 + st * 0.45;
+  // 누적 피로(0~100)가 높으면 한계 투구 수 감소
+  return Math.max(8, Math.round(base * (1 - Math.min(80, p.fatigue || 0) / 140)));
 }
 
 export { rateFrom };

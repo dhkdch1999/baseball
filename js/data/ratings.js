@@ -4,7 +4,8 @@
 export const RATING_MIN = 20;
 export const RATING_MAX = 80;
 
-export const z = (r) => (r - 50) / 10;
+// 65 이상은 효과를 절반으로 (슈퍼스타가 비현실적으로 튀지 않도록)
+export const z = (r) => (r <= 65 ? (r - 50) / 10 : 1.5 + (r - 65) / 20);
 
 /** 화면 표시용: 5 단위로 반올림 (OOTP식) */
 export const displayRating = (r) => Math.max(20, Math.min(80, Math.round(r / 5) * 5));

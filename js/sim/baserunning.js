@@ -36,7 +36,8 @@ export function walk(bases, batterRunner) {
 }
 
 /** 안타 진루 */
-export function hit(rng, bases, batterRunner, bb, outs, defense) {
+export function hit(rng, bases, batterRunner, bb, outs, defense, opts = {}) {
+  const hr = opts.hitAndRun ? 1.2 : 0;
   const [r1, r2, r3] = bases;
   const nb = [null, null, null];
   const res = result(nb);
@@ -59,7 +60,7 @@ export function hit(rng, bases, batterRunner, bb, outs, defense) {
     if (r3) move(res, r3, 3, 4);
     if (r2) move(res, r2, 2, 4);
     if (r1) {
-      const p = sigmoid(logit(0.42) + 0.45 * spd(r1) + 0.9 * twoOut - 0.3 * ofArm);
+      const p = sigmoid(logit(0.42) + 0.45 * spd(r1) + 0.9 * twoOut - 0.3 * ofArm + hr);
       if (rng.chance(p)) {
         if (rng.chance(0.05)) { move(res, r1, 1, 'out'); res.outs++; }
         else move(res, r1, 1, 4);
@@ -79,7 +80,7 @@ export function hit(rng, bases, batterRunner, bb, outs, defense) {
     } else { move(res, r2, 2, 3); nb[2] = r2; }
   }
   if (r1) {
-    const p = bb.infieldHit ? 0 : sigmoid(logit(bb.fielder === 'RF' ? 0.38 : 0.2) + 0.45 * spd(r1) + 0.4 * twoOut - 0.3 * ofArm);
+    const p = bb.infieldHit ? 0 : sigmoid(logit(bb.fielder === 'RF' ? 0.38 : 0.2) + 0.45 * spd(r1) + 0.4 * twoOut - 0.3 * ofArm + hr);
     if (!nb[2] && rng.chance(p)) { move(res, r1, 1, 3); nb[2] = r1; }
     else { move(res, r1, 1, 2); nb[1] = r1; }
   }
@@ -102,7 +103,7 @@ export function error(rng, bases, batterRunner) {
 }
 
 /** 땅볼 아웃: 병살 / 야수선택 / 진루타 */
-export function groundOut(rng, bases, batterRunner, bb, outs, defense) {
+export function groundOut(rng, bases, batterRunner, bb, outs, defense, opts = {}) {
   const [r1, r2, r3] = bases;
   const nb = bases.slice();
   const res = result(nb);
@@ -110,7 +111,7 @@ export function groundOut(rng, bases, batterRunner, bb, outs, defense) {
   const fielder = bb.fielder;
   const zDef = z(defense[fielder]?.ratings.def?.[fielder] ?? 45);
 
-  if (r1 && outs < 2) {
+  if (r1 && outs < 2 && !opts.hitAndRun) {
     // 병살 시도
     const dpP = sigmoid(logit(0.40) - 0.45 * zBat + 0.25 * zDef + (bb.q < -0.4 ? -0.3 : 0.2) + (fielder === 'P' ? 0.4 : 0));
     if (rng.chance(dpP)) {
@@ -145,24 +146,33 @@ export function groundOut(rng, bases, batterRunner, bb, outs, defense) {
   const rightSide = fielder === '2B' || fielder === '1B';
   if (r3) {
     const forced = r1 && r2;
-    if (forced || rng.chance(sigmoid(logit(0.5) + 0.3 * spd(r3) + (rightSide ? 0.3 : -0.2)))) { move(res, r3, 3, 4); nb[2] = null; }
+    const base3 = opts.infieldIn ? 0.15 : 0.5; // 전진수비면 3루주자 묶임
+    if (forced || rng.chance(sigmoid(logit(base3) + 0.3 * spd(r3) + (rightSide ? 0.3 : -0.2)))) { move(res, r3, 3, 4); nb[2] = null; }
   }
   if (r2) {
     const forced = !!r1;
-    if (!nb[2] && (forced || rng.chance(rightSide ? 0.75 : 0.3))) { move(res, r2, 2, 3); nb[2] = r2; nb[1] = null; }
+    if (!nb[2] && (forced || opts.hitAndRun || rng.chance(rightSide ? 0.75 : 0.3))) { move(res, r2, 2, 3); nb[2] = r2; nb[1] = null; }
   }
   if (r1) { move(res, r1, 1, 2); nb[1] = r1; nb[0] = null; }
   return res;
 }
 
 /** 뜬공/라인드라이브 아웃: 희생플라이, 태그업 */
-export function flyOut(rng, bases, batterRunner, bb, outs, defense) {
-  const [, r2, r3] = bases;
+export function flyOut(rng, bases, batterRunner, bb, outs, defense, opts = {}) {
+  const [r1, r2, r3] = bases;
   const nb = bases.slice();
   const res = result(nb);
   move(res, batterRunner, 0, 'out');
   res.outs = 1;
   if (outs + 1 >= 3) return res;
+  // 히트앤런 중 직선타/내야 뜬공 → 1루주자 귀루 실패
+  if (opts.hitAndRun && r1 && (bb.ballType === 'LD' || bb.ballType === 'PU') && rng.chance(bb.ballType === 'LD' ? 0.5 : 0.25)) {
+    move(res, r1, 1, 'out');
+    res.outs++;
+    res.dp = true;
+    nb[0] = null;
+    return res;
+  }
   const outfield = ['LF', 'CF', 'RF'].includes(bb.fielder);
   if (!outfield || bb.ballType === 'LD') return res;
   const arm = armOf(defense, bb.fielder);
@@ -215,5 +225,64 @@ export function steal(rng, bases, fromBase, catcher, pitcher) {
     res.outs = 1;
   }
   res.success = ok;
+  return res;
+}
+
+/**
+ * 번트. batter: 타자 선수, 반환 res.kind:
+ *   'SH'(희생번트 성공) | 'BUNT_HIT'(번트 안타) | 'BUNT_FC'(선행주자 아웃) | 'BUNT_PO'(번트 뜬공) | 'BUNT_DP'
+ */
+export function bunt(rng, bases, batterRunner, outs, defense) {
+  const [r1, r2, r3] = bases;
+  const b = batterRunner.player.ratings;
+  const skill = z(b.contact) * 0.6 + z(b.avoidK) * 0.4;
+  const zs = z(b.speed);
+  const nb = [null, null, null];
+  const res = result(nb);
+  if (!r1 && !r2 && !r3) {
+    // 주자 없을 때: 기습번트 (안타 노림)
+    const k = rng.weighted([['BUNT_HIT', Math.max(0.05, 0.24 + 0.08 * zs)], ['BUNT_OUT', 0.68], ['BUNT_PO', 0.08]]);
+    res.kind = k;
+    res.fielder = rng.weighted([['P', 40], ['3B', 45], ['1B', 15]]);
+    if (k === 'BUNT_HIT') { move(res, batterRunner, 0, 1); nb[0] = batterRunner; }
+    else { move(res, batterRunner, 0, 'out'); res.outs = 1; }
+    return res;
+  }
+  const roll = rng.weighted([
+    ['SH', 0.74 + 0.05 * skill],
+    ['BUNT_HIT', Math.max(0.01, 0.05 + 0.03 * zs)],
+    ['BUNT_FC', Math.max(0.03, 0.12 - 0.03 * skill)],
+    ['BUNT_PO', Math.max(0.02, 0.07 - 0.03 * skill)],
+    ['BUNT_DP', r1 && outs === 0 ? 0.02 : 0],
+  ]);
+  res.kind = roll;
+  const fielder = rng.weighted([['P', 40], ['3B', 35], ['1B', 25]]);
+  res.fielder = fielder;
+  const advanceAll = () => {
+    if (r3) move(res, r3, 3, 4);
+    if (r2) { move(res, r2, 2, 3); nb[2] = r2; }
+    if (r1) { move(res, r1, 1, 2); nb[1] = r1; }
+  };
+  if (roll === 'SH') {
+    move(res, batterRunner, 0, 'out'); res.outs = 1;
+    if (outs + 1 < 3) advanceAll();
+    else { nb[0] = r1; nb[1] = r2; nb[2] = r3; }
+  } else if (roll === 'BUNT_HIT') {
+    advanceAll();
+    move(res, batterRunner, 0, 1); nb[0] = batterRunner;
+  } else if (roll === 'BUNT_PO') {
+    move(res, batterRunner, 0, 'out'); res.outs = 1;
+    nb[0] = r1; nb[1] = r2; nb[2] = r3;
+  } else {
+    // 선행주자 아웃 (FC) 또는 병살
+    const lead = r3 && r2 && r1 ? 3 : r2 && r1 ? 2 : r1 ? 1 : r2 ? 2 : 3;
+    for (const [r, f] of [[r3, 3], [r2, 2], [r1, 1]]) {
+      if (!r) continue;
+      if (f === lead) { move(res, r, f, 'out'); res.outs++; continue; }
+      if (f + 1 <= 3) { move(res, r, f, f + 1); nb[f] = r; } else move(res, r, f, 4);
+    }
+    if (roll === 'BUNT_DP') { move(res, batterRunner, 0, 'out'); res.outs++; }
+    else { move(res, batterRunner, 0, 1); nb[0] = batterRunner; }
+  }
   return res;
 }

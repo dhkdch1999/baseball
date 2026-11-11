@@ -12,6 +12,8 @@ export function euro(word) {
   return word + (jong === 0 || jong === 8 ? '로' : '으로'); // 받침 없음 또는 ㄹ
 }
 
+const bb_isBunt = (e) => !!e.bb?.bunt;
+
 const halfName = (inning, half) => `${inning}회${half === 0 ? '초' : '말'}`;
 
 export class Narrator {
@@ -58,8 +60,18 @@ export class Narrator {
       case 'pitchingChange':
         return [{
           text: `투수 교체: ${e.out.name}(${e.oldPitches}구) → ${e.in.name}`,
-          cls: 'change', meta: `${e.team.short} ${e.role}`,
+          cls: 'change', meta: `${e.team.short} ${e.role}${e.byUser ? ' · 감독 지시' : ''}`,
         }];
+      case 'sub':
+        return [{
+          text: `${e.kind === 'PH' ? '대타' : '대주자'} ${e.in.name} (← ${e.out.name})`,
+          cls: 'change', meta: `${e.team.short} ${e.slot}번 타순`,
+        }];
+      case 'tactic':
+        if (e.kind === 'shift') return [{ text: `[수비] ${e.team.short} ${{ pull: '당겨치기 대비 시프트', in: '내야 전진수비' }[e.mode]}`, cls: 'tactic' }];
+        if (e.kind === 'buntSign') return [{ text: '번트 자세를 잡습니다', cls: 'tactic' }];
+        if (e.kind === 'hitrun') return [{ text: '히트앤런 작전! 주자 스타트', cls: 'tactic' }];
+        return [];
       case 'pitch':
         return this.pitchLine(e);
       case 'steal':
@@ -83,10 +95,14 @@ export class Narrator {
 
   pitchLine(e) {
     const { pitch, count, n } = e;
-    const terminal = pitch.result === 'inPlay' || pitch.result === 'hbp'
+    const terminal = pitch.result === 'inPlay' || pitch.result === 'hbp' || pitch.result === 'buntInPlay'
+      || (pitch.result === 'buntFoul' && count[1] === 3)
       || (pitch.result === 'ball' && count[0] === 4)
       || ((pitch.result === 'calledStrike' || pitch.result === 'swingStrike') && count[1] === 3);
     const meta = `${pitch.ko} ${pitch.kmh}km`;
+    if (e.tactic === 'bunt' && pitch.result === 'swingStrike') {
+      return [{ text: `${n}구 번트 헛스윙 (${count[0]}-${count[1]})`, cls: 'pitch', meta }];
+    }
     if (terminal) {
       this.pending = { n, pitch, meta };
       return [];
@@ -121,8 +137,12 @@ export class Narrator {
       hr: HR_NAME[Math.min(3, Math.max(0, e.runs.length - 1))],
     };
     let key = e.kind;
+    if (bb?.bunt) {
+      key = { SH: 'SH', '1B': 'BUNT_HIT', FC: 'BUNT_FC', PO: 'BUNT_PO', GO: 'BUNT_OUT', DP: 'BUNT_FC' }[e.kind] || 'SH';
+      return this.fill(this.pick(key), vars);
+    }
     switch (e.kind) {
-      case 'K': key = e.looking ? 'K_LOOK' : 'K_SWING'; break;
+      case 'K': key = e.buntK ? 'K_BUNT' : e.looking ? 'K_LOOK' : 'K_SWING'; break;
       case '1B':
         if (bb.infieldHit) key = '1B_IF';
         else if (bb.ballType === 'GB') key = '1B_GB';
@@ -142,7 +162,7 @@ export class Narrator {
     const scored = e.runs.length > 0;
     let text;
     if (!pend) text = phrase;
-    else if (e.kind === 'K' || e.kind === 'HBP') text = `${pend.n}구 ${phrase}`;
+    else if (e.kind === 'K' || e.kind === 'HBP' || e.kind === 'SH' || bb_isBunt(e)) text = `${pend.n}구 ${phrase}`;
     else text = `${pend.n}구 ${pend.pitch.result === 'inPlay' ? '타격' : this.pitchWord(pend.pitch)} → ${phrase}`;
     if (moves) text += /[!.]$/.test(text) ? ` ${moves}` : `, ${moves}`;
     if (scored) text += ` ${this.scoreText(e.snap)}`;
@@ -153,14 +173,14 @@ export class Narrator {
     if (e.kind === 'HR') cls += ' homerun';
     const out = [{ text, cls, meta: pend?.meta }];
     if (e.walkoff) out.push({ text: `끝내기! ${e.batter.name}의 ${euro(this.walkoffName(e))} 경기가 끝납니다!`, cls: 'walkoff' });
-    if (e.snap && ['K', 'GO', 'FO', 'LO', 'PO', 'SF', 'DP', 'FC'].includes(e.kind) && e.snap.outs < 3) {
+    if (e.snap && ['K', 'GO', 'FO', 'LO', 'PO', 'SF', 'DP', 'FC', 'SH', 'LDP'].includes(e.kind) && e.snap.outs < 3) {
       out.push({ text: `${e.snap.outs}아웃`, cls: 'outs' });
     }
     return out;
   }
 
   walkoffName(e) {
-    return { HR: '끝내기 홈런', '1B': '끝내기 안타', '2B': '끝내기 2루타', '3B': '끝내기 3루타', BB: '끝내기 볼넷', HBP: '끝내기 사구', SF: '끝내기 희생플라이', E: '끝내기 실책', GO: '끝내기 땅볼', FC: '끝내기 야수선택' }[e.kind] || '끝내기';
+    return { HR: '끝내기 홈런', '1B': '끝내기 안타', '2B': '끝내기 2루타', '3B': '끝내기 3루타', BB: '끝내기 볼넷', IBB: '끝내기 볼넷', HBP: '끝내기 사구', SF: '끝내기 희생플라이', E: '끝내기 실책', GO: '끝내기 땅볼', FC: '끝내기 야수선택' }[e.kind] || '끝내기';
   }
 
   stealLine(e) {
