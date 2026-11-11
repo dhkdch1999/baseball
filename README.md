@@ -13,7 +13,8 @@ ES 모듈이라 `file://`로는 열리지 않는다. GitHub Pages에서는 저�
 
 ## 할 수 있는 것
 
-- **구단 선택**: KBO 10개 구단 중 하나 (선수는 시드 기반 랜덤 생성)
+- **구단 선택**: KBO 10개 구단 중 하나
+- **선수단 모드**: 실제 KBO 선수단(2026 시즌 기록 → 능력치 변환) 또는 랜덤 선수단(전력 평준화)
 - **경기 중계**: 1구 / 1타석 / 1이닝 / 끝까지, 자동 재생(속도 4단계), 승부처 자동 정지
 - **감독 작전**: 도루, 번트, 히트앤런, 대타, 대주자, 고의사구, 투수 교체, 수비 시프트(당겨치기·전진수비).
   "AI 코치 자동 운영"을 끄면 투수 교체도 직접 해야 한다
@@ -26,12 +27,20 @@ ES 모듈이라 `file://`로는 열리지 않는다. GitHub Pages에서는 저�
 - **트레이드**: AI 구단이 나이·잠재력·계약을 평가해 수락/거절 (정규시즌 100일차가 마감)
 - **저장**: 슬롯 3개(자동 저장) + JSON 내보내기/불러오기
 
+## 실제 선수 데이터
+
+`js/data/kbo2026.js`: 2026 KBO 정규시즌 기록 (Daum 스포츠 기록실, 2026-11-11 수집).
+타자는 타석 순 상위 200명, 투수는 이닝 순 상위 200명. 세부 수비 위치는 `js/data/realRoster.js`에서 지정·추정한다.
+능력치는 표본 크기만큼 리그 평균 쪽으로 보정한 비율 기록(타율·ISO·볼넷%·삼진%·도루 시도, 투수 탈삼진%·볼넷%·피홈런율)으로 정한다.
+
 ## 도구 (Node 18+)
 
 ```bash
 node tools/balance.mjs                    # 1000시즌 밸런스 테스트 (실제 커리어 모드 조건, 병렬)
 node tools/balance.mjs --seasons 30       # 빠른 확인
-node tools/career-test.mjs --seasons 5    # 여러 시즌 연속 진행 + 불변 조건 검사
+node tools/career-test.mjs --seasons 5    # 여러 시즌 연속 진행 + 불변 조건 검사 (--real: 실제 선수단)
+node tools/real-check.mjs --seasons 3     # 실제 선수단 시뮬 기록 vs 2026 실제 기록 비교
+node tools/parity.mjs --leagues 12        # 구단 간 승률 격차 점검
 node tools/replay.mjs --away LG --home OB --seed 42   # 터미널 문자중계
 node tools/replay.mjs --seed 42 --check               # 시드 재현성 확인
 ```

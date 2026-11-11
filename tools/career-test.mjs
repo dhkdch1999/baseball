@@ -11,7 +11,7 @@ import { fmtMoney } from '../js/league/offseason.js';
 
 const a = process.argv.slice(2);
 const N = parseInt(a[a.indexOf('--seasons') + 1] || '2', 10);
-const lg = newCareer({ seed: 'ct', myTeamId: 'HH' });
+const lg = newCareer({ seed: 'ct', myTeamId: 'HH', roster: a.includes('--real') ? 'real' : 'random' });
 let fail = 0;
 const check = (c, m) => { if (!c) { fail++; console.log('✗', m); } };
 

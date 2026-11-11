@@ -2,6 +2,7 @@
 import { Rng } from '../core/rng.js';
 import { clamp } from '../core/util.js';
 import { generateLeague, autoDepthChart } from '../data/teamGen.js';
+import { generateRealLeague, REAL_SEASON } from '../data/realRoster.js';
 import { getNextPlayerId, resetPlayerIds } from '../data/playerGen.js';
 import { Game } from '../sim/game.js';
 import { chooseStarter } from '../sim/aiManager.js';
@@ -15,8 +16,9 @@ import { ratingMeans } from './offseason.js';
 export const SAVE_VERSION = 2;
 export const TRADE_DEADLINE_DAY = 100;
 
-export function newCareer({ seed = 'kbo-1', myTeamId, year = 2027 }) {
-  const lg = generateLeague(seed);
+export function newCareer({ seed = 'kbo-1', myTeamId, year = 2027, roster = 'random' }) {
+  // roster: 'random' = 랜덤 선수단 / 'real' = 실제 KBO 선수단 (2026 기록 기반)
+  const lg = roster === 'real' ? generateRealLeague(seed, year) : generateLeague(seed);
   const league = {
     version: SAVE_VERSION,
     seed: String(seed),
@@ -35,10 +37,13 @@ export function newCareer({ seed = 'kbo-1', myTeamId, year = 2027 }) {
     offseason: null,
     nextPlayerId: getNextPlayerId(),
     lastGame: null,
+    rosterMode: roster,
+    realSeason: roster === 'real' ? REAL_SEASON : null,
   };
   for (const t of league.teams) { t.rotationIndex = 0; }
   league.ratingNorm = ratingMeans(league);
   addNews(league, `${year} 시즌, ${teamById(league, myTeamId).name} 감독으로 부임했습니다.`, myTeamId);
+  if (roster === 'real') addNews(league, `실제 KBO 선수단으로 시작합니다. 선수 능력치는 ${REAL_SEASON} 시즌 기록을 바탕으로 정했습니다.`);
   return league;
 }
 

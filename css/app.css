@@ -149,3 +149,12 @@ body.busy main { opacity: .55; pointer-events: none; }
 
 .auto-box { display: flex; padding: 8px 12px; border-radius: 8px; background: #fafbfc; border: 1px solid var(--line); margin-bottom: 8px; }
 .auto-box.on { background: #eef4ff; border-color: #c7d7f5; }
+
+.real-line { margin-top: 6px; font-size: 13px; color: #1d4ed8; background: #eef4ff; padding: 4px 10px; border-radius: 6px; display: inline-block; }
+
+.mode-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 10px; }
+.mode-pick button { text-align: left; display: grid; gap: 4px; padding: 12px 14px; border: 2px solid var(--line); border-radius: 10px; }
+.mode-pick button span { font-size: 12.5px; color: var(--muted); }
+.mode-pick button.sel { border-color: var(--accent); background: #eef4ff; }
+.tc-star { font-size: 12px; color: #374151; }
+@media (max-width: 600px) { .mode-pick { grid-template-columns: 1fr; } }

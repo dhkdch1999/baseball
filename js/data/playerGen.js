@@ -191,7 +191,8 @@ export function potentialOverall(p) {
 
 /** 스카우트가 보는 잠재력 (오차 포함, 5단위) */
 export function scoutPotential(p) {
-  return Math.max(20, Math.min(80, Math.round((potentialOverall(p) + (p.scoutNoise || 0)) / 5) * 5));
+  const est = Math.max(overall(p), potentialOverall(p) + (p.scoutNoise || 0));
+  return Math.max(20, Math.min(80, Math.round(est / 5) * 5));
 }
 
 /** 시장 연봉 (만원) */

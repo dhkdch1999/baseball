@@ -431,7 +431,7 @@ export function startNewSeason(lg) {
     }
   }
   // AI 구단 전력 평준화: 리그 평균 쪽으로 절반만 당긴다 (사용자 구단은 제외 → 운영 결과가 그대로 남는다)
-  equalizeTeams(lg.teams, { factor: 0.5, passes: 1, skip: new Set([lg.myTeamId]) });
+  equalizeTeams(lg.teams, { factor: lg.rosterMode === 'real' ? 0.25 : 0.5, passes: 1, skip: new Set([lg.myTeamId]) });
   // 남은 FA는 요구 조건 하락
   for (const p of lg.freeAgents) {
     if (p.asking) p.asking.salary = Math.max(3000, Math.round(p.asking.salary * 0.8 / 100) * 100);

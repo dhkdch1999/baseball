@@ -55,6 +55,10 @@ export function openPlayer(lg, id) {
     if (rows.length) statsHtml += table(['시즌', '팀', '경기', '선발', '승', '패', '세', '이닝', 'ERA', 'WHIP', '탈삼진', '볼넷', '피홈런', 'WAR'], rows, 'compact');
   }
 
+  const rs = p.realStat;
+  const realLine = rs ? `<div class="real-line">📊 ${lg.realSeason || 2026} 실제 기록 · ${p.type === 'H'
+    ? `${rs.G}경기 ${rs.PA}타석 타율 ${fmt3(rs.AVG)} 출루 ${fmt3(rs.OBP)} 장타 ${fmt3(rs.SLG)} ${rs.HR}홈런 ${rs.SB}도루`
+    : `${rs.G}경기 ${fmtIP(rs.outs)}이닝 ${rs.W}승 ${rs.L}패${rs.SV ? ` ${rs.SV}세` : ''}${rs.HLD ? ` ${rs.HLD}홀드` : ''} ERA ${fmt2(rs.ERA)} WHIP ${fmt2(rs.WHIP)} 탈삼진 ${rs.SO}`}</div>` : '';
   const draftInfo = p.draft ? `<div class="subtle">${p.draft.season} 드래프트 ${p.draft.round}라운드 ${p.draft.pick}순위 (${esc(teamById(lg, p.draft.team)?.short)})</div>` : '';
   openModal(`
     <div class="pl-head">
@@ -64,6 +68,7 @@ export function openPlayer(lg, id) {
         <div>계약: ${contract} ${statusBadges(p)}</div>
         ${p.injury ? `<div class="inj-text">부상: ${esc(p.injury.type)} (복귀까지 약 ${p.injury.days}일)</div>` : ''}
         ${draftInfo}
+        ${realLine}
       </div>
       <div class="ovr-box"><div>종합 ${OVR(p)}</div><div>잠재력 ${POT(p)}</div><div class="subtle">잠재력은 스카우트 평가 (오차 있음)</div></div>
     </div>
