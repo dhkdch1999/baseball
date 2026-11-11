@@ -18,7 +18,7 @@ export function generateLeague(seed = 'default') {
   resetPlayerIds(1);
   const usedNames = new Set();
   const teams = KBO_TEAMS.map((info) => {
-    const teamTier = rng.normal(0, 1.5); // 구단별 전력 차
+    const teamTier = rng.normal(0, 1); // 구단별 전력 차 (평준화 단계에서 일부만 반영)
     const roster = [];
     for (const [pos, tier] of HITTER_SLOTS) roster.push(makeHitter(rng, pos, tier + teamTier, usedNames));
     for (const [role, tier] of PITCHER_SLOTS) roster.push(makePitcher(rng, role, tier + teamTier, usedNames));
@@ -41,26 +41,27 @@ export function generateLeague(seed = 'default') {
     const team = { ...info, short: SHORT_NAME[info.id], roster, reserve, tier: teamTier };
     return team;
   });
-  // 전력 평준화: 구단별 주전 평균을 (리그 평균 + 구단 전력차)로 맞춘다
-  const top = (arr, n) => arr.map((p) => overall(p)).sort((a, b) => b - a).slice(0, n);
-  const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
-  const tH = teams.map((t) => mean(top(t.roster.filter((p) => p.type === 'H'), 9)));
-  const tP = teams.map((t) => mean(top(t.roster.filter((p) => p.type === 'P'), 10)));
-  const lgH = mean(tH), lgP = mean(tP);
-  teams.forEach((t, i) => {
-    const dH = Math.round((lgH + t.tier * 0.8 - tH[i]) * 0.85);
-    const dP = Math.round((lgP + t.tier * 0.8 - tP[i]) * 0.85);
-    for (const p of [...t.roster, ...t.reserve]) {
-      const keys = p.type === 'H' ? ['contact', 'power', 'eye'] : ['control', 'stuff'];
-      const d = p.type === 'H' ? dH : dP;
-      for (const k of keys) {
-        p.ratings[k] = Math.max(20, Math.min(80, p.ratings[k] + d));
-        if (p.potential[k] != null) p.potential[k] = Math.max(20, Math.min(80, p.potential[k] + d));
-      }
+  // 1차 평준화: 같은 슬롯(주전 포수, 1선발, 마무리 …)끼리 모아서 '지금까지 전력이 가장 약한 팀'에 좋은 선수부터 배분
+  {
+    const W = (i, isRes) => (isRes ? 0.15 : i < 8 ? 1 : i < 13 ? 0.35 : i < 18 ? 1 : 0.6);
+    const tally = teams.map(() => 0);
+    const order = teams.map((_, i) => i);
+    const nRoster = teams[0].roster.length, nRes = teams[0].reserve.length;
+    const slots = [...Array.from({ length: nRoster }, (_, i) => ['roster', i]), ...Array.from({ length: nRes }, (_, i) => ['reserve', i])];
+    // 중요한 슬롯부터 배분해야 균형이 잘 맞는다
+    slots.sort((a, b) => W(b[1], b[0] === 'reserve') - W(a[1], a[0] === 'reserve'));
+    for (const [list, i] of slots) {
+      const players = teams.map((t) => t[list][i]).sort((a, b) => overall(b) - overall(a));
+      const recv = order.slice().sort((a, b) => tally[a] - tally[b]);
+      players.forEach((p, k) => {
+        const ti = recv[k];
+        teams[ti][list][i] = p;
+        tally[ti] += overall(p) * W(i, list === 'reserve');
+      });
     }
-    delete t.tier;
-    autoDepthChart(t);
-  });
+  }
+  equalizeTeams(teams, { tiers: teams.map((t) => t.tier * 0.3) });
+  teams.forEach((t) => { delete t.tier; autoDepthChart(t); });
   return { seed: String(seed), teams };
 }
 
@@ -149,6 +150,68 @@ function buildBattingOrder(starters) {
   order[7] = take(offenseScore);
   order[8] = take((p) => p.ratings.speed);                         // 9번: 남은 선수
   return order;
+}
+
+// 전력 평준화: 실제 KBO처럼 1위가 5할 후반에 오도록 구단 간 전력 차를 작게 둔다.
+// 주전급(실제 라인업·로테이션·불펜)의 능력치 평균을 항목별로 리그 평균에 맞춘다. factor<1이면 그 비율만큼만 당긴다.
+export function equalizeTeams(teams, { factor = 1, tiers = null, skip = null, passes = 3 } = {}) {
+  // 구단별로 모든 선수에게 같은 값을 더하거나 빼므로 팀 안의 선수 간 차이는 그대로 유지된다.
+  const mean = (a) => a.reduce((x, y) => x + y, 0) / Math.max(1, a.length);
+  const clampR = (v) => Math.max(20, Math.min(80, Math.round(v)));
+  // 실제로 뛰는 선수 기준: 선발 라인업 9명, 선발 로테이션 5명, 필승조·중간계투
+  const groups = (t) => {
+    if (skip?.has(t.id)) t = { ...t, roster: [...t.roster], reserve: [...t.reserve] }; // 사용자 팀 라인업은 건드리지 않음
+    autoDepthChart(t);
+    const by = (id) => t.roster.find((p) => p.id === id);
+    const H = t.lineup.map((l) => ({ p: by(l.id), pos: l.pos }));
+    const SP = t.rotation.map(by);
+    const bp = t.bullpen;
+    const RP = [bp.closer, ...bp.setup, ...bp.middle].map(by).filter(Boolean);
+    return { H, SP, RP };
+  };
+  const H_ITEMS = {
+    contact: (x) => x.p.ratings.contact, power: (x) => x.p.ratings.power, eye: (x) => x.p.ratings.eye,
+    avoidK: (x) => x.p.ratings.avoidK, speed: (x) => x.p.ratings.speed,
+    def: (x) => (x.pos === 'DH' ? null : x.p.ratings.def[x.pos] ?? 30),
+  };
+  const P_ITEMS = {
+    control: (p) => p.ratings.control, stuff: (p) => p.ratings.stuff, velo: (p) => p.ratings.velo,
+    grade: (p) => mean(p.ratings.pitches.map((x) => x.grade)), stamina: (p) => p.ratings.stamina,
+  };
+  const vals = (arr, f) => arr.map(f).filter((v) => v != null);
+  const applyH = (p, k, d) => {
+    if (k === 'def') { for (const pos of Object.keys(p.ratings.def)) p.ratings.def[pos] = clampR(p.ratings.def[pos] + d); if (p.potential.def != null) p.potential.def = clampR(p.potential.def + d); return; }
+    p.ratings[k] = clampR(p.ratings[k] + d);
+    if (p.potential[k] != null) p.potential[k] = clampR(p.potential[k] + d);
+  };
+  const applyP = (p, k, d) => {
+    if (k === 'grade') { for (const x of p.ratings.pitches) x.grade = clampR(x.grade + d); return; }
+    p.ratings[k] = clampR(p.ratings[k] + d);
+    if (p.potential[k] != null) p.potential[k] = clampR(p.potential[k] + d);
+  };
+  for (let pass = 0; pass < passes; pass++) {
+    const G = teams.map(groups);
+    for (const [k, f] of Object.entries(H_ITEMS)) {
+      const lgM = mean(G.map((g) => mean(vals(g.H, f))));
+      teams.forEach((t, i) => {
+        if (skip?.has(t.id)) return;
+        const d = ((tiers?.[i] ?? 0) + lgM - mean(vals(G[i].H, f))) * factor;
+        for (const p of [...t.roster, ...t.reserve]) if (p.type === 'H') applyH(p, k, d);
+      });
+    }
+    for (const grp of ['SP', 'RP']) {
+      for (const [k, f] of Object.entries(P_ITEMS)) {
+        if (k === 'stamina' && grp === 'RP') continue;
+        const lgM = mean(G.map((g) => mean(g[grp].map(f))));
+        teams.forEach((t, i) => {
+          if (skip?.has(t.id)) return;
+          const d = (lgM + (k === 'stamina' ? 0 : tiers?.[i] ?? 0) - mean(G[i][grp].map(f))) * factor;
+          for (const p of [...t.roster, ...t.reserve]) if (p.type === 'P' && p.role === grp) applyP(p, k, d);
+        });
+      }
+    }
+  }
+  teams.forEach((t) => { if (!skip?.has(t.id)) autoDepthChart(t); });
 }
 
 // 1군 엔트리 구성 (AI 팀): 1군 26명 = 야수 13 + 투수 13, 나머지는 2군
