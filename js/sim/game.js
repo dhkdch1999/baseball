@@ -7,7 +7,7 @@
 import { Rng } from '../core/rng.js';
 import { z } from '../data/ratings.js';
 import { LEAGUE } from './log5.js';
-import { throwPitch } from './pitch.js';
+import { throwPitch, pitchLocation } from './pitch.js';
 import { resolveBattedBall } from './battedBall.js';
 import * as BR from './baserunning.js';
 import { BoxScore } from './boxscore.js';
@@ -32,6 +32,7 @@ export class Game {
   constructor({ away, home, seed = 1, verbose = true, starters = null, maxInnings = RULES.maxInnings, autoManage = [true, true] }) {
     this.seed = seed;
     this.rng = new Rng('game', seed);
+    this.locRng = new Rng('loc', seed); // 투구 위치 표시 전용 (결과에 영향 없음)
     this.verbose = verbose;
     this.teams = [away, home];
     this.maxInnings = maxInnings;
@@ -333,6 +334,7 @@ export class Game {
       }
       const r = pitch.result;
       if (r !== 'ball' && r !== 'hbp') pl.strikes++;
+      if (this.verbose) pitch.loc = pitchLocation(this.locRng, pitch, batter);
 
       if (r === 'hbp') {
         yield this.ev('pitch', { n, pitch, count: this.count.slice(), tactic });

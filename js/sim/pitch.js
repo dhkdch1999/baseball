@@ -117,3 +117,30 @@ export function pitchLimit(p, asStarter) {
 }
 
 export { rateFrom };
+
+/**
+ * 투구 위치 (중계 화면 표시용). 포수 시점 좌표: x -1~1 = 홈플레이트 폭, z -1~1 = 스트라이크존 높이.
+ * 경기 결과용 난수와 분리된 rng를 쓰므로 위치를 그려도 경기 결과는 바뀌지 않는다.
+ */
+export function pitchLocation(rng, pitch, batter) {
+  const away = batter.bats === 'L' ? -1 : 1; // 우타자 기준 바깥쪽 = +x
+  const breaking = pitch.type !== 'FF' && pitch.type !== 'SI';
+  const clampV = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  let x, z;
+  if (pitch.result === 'hbp') {
+    x = -away * (1.65 + rng.next() * 0.25);
+    z = rng.normal(0, 0.4);
+  } else if (pitch.inZone) {
+    x = clampV(rng.normal(breaking ? 0.15 * away : 0, 0.48), -0.95, 0.95);
+    z = clampV(rng.normal(breaking ? -0.25 : 0.1, 0.48), -0.95, 0.95);
+  } else {
+    const near = pitch.swung ? 0.45 : 1; // 헛스윙 유도구는 존 근처
+    const edge = () => 1.04 + Math.abs(rng.normal(0, 0.38)) * near;
+    const r = rng.next();
+    if (breaking && r < 0.55) { z = -edge(); x = rng.normal(0.25 * away, 0.55); }
+    else if (r < 0.75) { x = away * edge(); z = rng.normal(-0.1, 0.55); }
+    else if (r < 0.9) { x = -away * edge(); z = rng.normal(0, 0.55); }
+    else { z = edge(); x = rng.normal(0, 0.55); }
+  }
+  return { x: +clampV(x, -1.95, 1.95).toFixed(2), z: +clampV(z, -1.95, 1.95).toFixed(2) };
+}

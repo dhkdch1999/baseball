@@ -5,13 +5,13 @@ import { syncPhase } from '../../league/career.js';
 import { roleOf } from '../../sim/aiManager.js';
 import { SHIFT_KO } from '../../sim/game.js';
 import { overall } from '../../data/playerGen.js';
-import { Feed } from '../broadcast/feed.js';
-import { renderScoreboard, renderDiamond, renderBSO, renderMatchupNow, renderBox } from '../scoreboard.js';
+import { renderScoreboard, renderBox } from '../scoreboard.js';
+import { PbpLog, renderPbp, renderInningTabs } from '../broadcast/pbp.js';
+import { renderStage } from '../broadcast/stage.js';
 import { esc, R, toast, POS_SHORT_KO } from '../common.js';
 
 const SPEEDS = { slow: 1300, normal: 650, fast: 250, turbo: 60 };
 let timer = null;
-let feed = null;
 let root = null;
 let tab = 'feed';
 
@@ -24,24 +24,26 @@ function stopAuto() {
 }
 
 /** 이벤트 소비. stop(e, lines) → true면 멈춤 */
-function advance(stop, { animate = true } = {}) {
+function advance(stop) {
   const live = L();
   if (!live || live.done) return;
-  const buf = [];
   let paused = false;
   for (;;) {
     const { value: e, done } = live.it.next();
     if (done) break;
-    const lines = live.narrator.lines(e);
-    buf.push(...lines);
+    const before = live.log.pa?.pitches.length;
+    live.log.push(e);
     track(e);
+    // 화면에 새로 보일 것이 생겼는지 (멈춤 판정용)
+    const visible = e.t !== 'pitch' || live.log.pa?.pitches.length !== before;
     if (e.t === 'gameEnd') { finishGame(); break; }
-    if (live.autoPause && e.t === 'pa' && important(live.game)) { paused = true; buf.push({ text: '⏸ 승부처! 작전을 고민해 보세요', cls: 'tactic' }); break; }
-    if (stop(e, lines)) break;
+    if (live.autoPause && e.t === 'pa' && important(live.game)) {
+      paused = true;
+      live.log.half.items.push({ type: 'note', text: '⏸ 승부처! 작전을 고민해 보세요', cls: 'tactic' });
+      break;
+    }
+    if (stop(e, visible)) break;
   }
-  live.lines.push(...buf);
-  feed.push(buf, { animate: animate && buf.length < 40 });
-  feed.scrollToEnd();
   refresh();
   if (paused) stopAuto();
 }
@@ -55,11 +57,9 @@ function important(g) {
 function track(e) {
   const live = L();
   if (e.snap) live.snap = e.snap;
-  if (e.t === 'pa') live.cur = { batter: e.batter, pitcher: e.pitcher, slot: e.slot, half: e.snap.half };
-  if (e.t === 'pitchingChange' && live.cur) live.cur.pitcher = e.in;
-  if (e.t === 'sub' && e.kind === 'PH' && live.cur) live.cur.batter = e.in;
   if (e.t === 'result' || e.t === 'halfEnd') live.countReset = true;
   if (e.t === 'pitch' || e.t === 'pa') live.countReset = false;
+  if (e.t === 'halfStart' && live.innTab !== 'score' && live.follow) live.innTab = e.inning;
 }
 
 function finishGame() {
@@ -76,11 +76,11 @@ function finishGame() {
   renderHeader();
 }
 
-const stepPitch = () => advance((e, lines) => (e.t === 'pitch' && lines.length > 0) || e.t === 'result' || e.t === 'halfEnd' || e.t === 'steal');
+const stepPitch = () => advance((e) => e.t === 'pitch' || e.t === 'result' || e.t === 'halfEnd' || e.t === 'steal');
 const stepPA = () => advance((e) => e.t === 'result' || e.t === 'halfEnd');
 const stepInning = () => advance((e) => e.t === 'halfEnd');
-const stepEnd = () => { stopAuto(); L().autoPause = false; advance(() => false, { animate: false }); };
-const stepLine = () => advance((e, lines) => lines.length > 0);
+const stepEnd = () => { stopAuto(); L().autoPause = false; advance(() => false); };
+const stepLine = () => advance((e) => ['pitch', 'result', 'steal', 'wildPitch', 'sub', 'pitchingChange', 'tactic', 'halfStart'].includes(e.t));
 
 function autoLoop() {
   const live = L();
@@ -95,16 +95,19 @@ function refresh() {
   if (!root || !live) return;
   const g = live.game;
   renderScoreboard(root.querySelector('#scoreboard'), g);
-  const snap = live.snap;
-  if (snap) {
-    const halfOver = snap.outs >= 3 || live.done;
-    renderDiamond(root.querySelector('#diamond'), halfOver ? [null, null, null] : snap.bases);
-    renderBSO(root.querySelector('#bso'), live.countReset ? [0, 0] : snap.count, Math.min(snap.outs, 3));
-  }
-  if (live.cur) renderMatchupNow(root.querySelector('#matchupNow'), g, live.cur);
+  const snap = live.snap && { ...live.snap, half: Math.min(live.snap.half, 1), count: live.countReset ? [0, 0] : live.snap.count };
+  if (snap && (snap.outs >= 3 || live.done)) snap.bases = [null, null, null];
+  renderStage(root.querySelector('#stage'), {
+    game: g, snap, pa: live.log.pa, lastPitch: live.log.lastPitch, mode: live.stageMode, runnersNames: snap?.bases || [],
+  });
   root.querySelector('#gControls').querySelectorAll('button.step').forEach((b) => { b.disabled = live.done; });
   root.querySelector('#gManager').innerHTML = live.done ? endPanel() : managerPanel();
   bindManager();
+  if (tab === 'feed') {
+    if (live.follow && live.innTab !== 'score') live.innTab = live.log.currentInning();
+    renderInningTabs(root.querySelector('#innTabs'), live.log, live.innTab);
+    renderPbp(root.querySelector('#pbp'), live.log, live.innTab, { game: g, mySide: live.mySide });
+  }
   if (tab === 'box') renderBox(root.querySelector('#gBox'), g);
   if (tab === 'lineup') root.querySelector('#gLineup').innerHTML = lineupPanel();
 }
@@ -202,13 +205,15 @@ export const gameView = {
     if (!live) { el.innerHTML = '<section class="card"><p>진행 중인 경기가 없습니다.</p><button data-nav="home">홈으로</button></section>'; return; }
     live.speed ??= 'normal';
     live.autoPause ??= true;
+    live.follow ??= true;
+    live.innTab ??= 1;
+    live.stageMode ??= (localStorage.getItem('bbgm.stage') || 'bat');
+    if (!live.log) {
+      live.log = new PbpLog(live.narrator, live.game, app.lg.season);
+    }
     el.innerHTML = `
-      <div id="scoreboard" class="scoreboard"></div>
-      <div class="situation">
-        <div id="diamond" class="diamond"></div>
-        <div id="bso" class="bso"></div>
-        <div id="matchupNow" class="matchup-now"></div>
-      </div>
+      <div id="scoreboard" class="scoreboard compact-sb"></div>
+      <div id="stage" class="stage"></div>
       <div id="gControls" class="controls">
         <button class="primary step" id="gPitch" title="Space">1구</button>
         <button class="primary step" id="gPA" title="Enter">1타석</button>
@@ -223,13 +228,14 @@ export const gameView = {
       <nav class="tabs">
         <button data-tab="feed">문자중계</button><button data-tab="box">박스스코어</button><button data-tab="lineup">라인업</button>
       </nav>
-      <div id="feed" class="feed"></div>
+      <div id="gFeed">
+        <div class="inn-bar"><nav id="innTabs" class="inn-tabs"></nav>
+          <label class="chk follow"><input type="checkbox" id="gFollow" ${live.follow ? 'checked' : ''}> 자동 업데이트</label></div>
+        <div id="pbp" class="pbp"></div>
+      </div>
       <div id="gBox" class="box" hidden></div>
       <div id="gLineup" class="lineups" hidden></div>`;
-    feed = new Feed(el.querySelector('#feed'));
-    feed.push(live.lines, { animate: false });
-    if (!live.lines.length) advance((e) => e.t === 'halfStart');
-    feed.scrollToEnd();
+    if (!live.log.halves.length) advance((e) => e.t === 'halfStart');
 
     const $ = (s) => el.querySelector(s);
     $('#gPitch').onclick = () => { stopAuto(); stepPitch(); };
@@ -244,6 +250,23 @@ export const gameView = {
     $('#gSpeed').onchange = (e) => { live.speed = e.target.value; };
     $('#gPause').onchange = (e) => { live.autoPause = e.target.checked; };
     el.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => { tab = b.dataset.tab; showTab(); });
+    $('#gFollow').onchange = (e) => { live.follow = e.target.checked; if (live.follow) live.innTab = live.log.currentInning(); refresh(); };
+    $('#innTabs').onclick = (ev) => {
+      const b = ev.target.closest('[data-inn]');
+      if (!b) return;
+      const k = b.dataset.inn === 'score' ? 'score' : Number(b.dataset.inn);
+      live.innTab = k;
+      live.follow = k === live.log.currentInning();
+      $('#gFollow').checked = live.follow;
+      refresh();
+    };
+    $('#stage').onclick = (ev) => {
+      const b = ev.target.closest('[data-stage]');
+      if (!b) return;
+      live.stageMode = b.dataset.stage;
+      try { localStorage.setItem('bbgm.stage', live.stageMode); } catch { /* 저장 불가 환경 무시 */ }
+      refresh();
+    };
     showTab();
     refresh();
   },
@@ -252,7 +275,7 @@ export const gameView = {
 
 function showTab() {
   root.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
-  root.querySelector('#feed').hidden = tab !== 'feed';
+  root.querySelector('#gFeed').hidden = tab !== 'feed';
   root.querySelector('#gBox').hidden = tab !== 'box';
   root.querySelector('#gLineup').hidden = tab !== 'lineup';
   refresh();

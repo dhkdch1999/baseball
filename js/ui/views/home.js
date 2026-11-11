@@ -16,7 +16,7 @@ export function startLiveGame() {
   if (!meta || meta.result) return;
   const { game, msgs } = prepareGame(lg, meta, { verbose: true });
   const mySide = meta.away === lg.myTeamId ? 0 : 1;
-  app.live = { game, meta, it: game.run(), narrator: new Narrator(game.seed), mySide, lines: [], msgs, done: false };
+  app.live = { game, meta, it: game.run(), narrator: new Narrator(game.seed), mySide, msgs, done: false };
   for (const m of msgs) toast(m);
   navigate('game');
 }
