@@ -2,6 +2,7 @@
 import { simDay, myGameToday, todayGames } from './season.js';
 import {
   startOffseason, ensureAsking, aiSignFreeAgents, startDraft, runDraft, startNewSeason, draftOnClock,
+  startForeignMarket, finishForeignStep,
 } from './offseason.js';
 
 /** 오프시즌 진입 처리 (포스트시즌 종료 후 자동) */
@@ -39,6 +40,10 @@ export function nextOffseasonStep(lg) {
   const off = lg.offseason;
   if (!off) return;
   if (off.step === 'review') {
+    startForeignMarket(lg);
+    off.step = 'foreign';
+  } else if (off.step === 'foreign') {
+    finishForeignStep(lg);
     ensureAsking(lg);
     off.step = 'fa';
   } else if (off.step === 'fa') {

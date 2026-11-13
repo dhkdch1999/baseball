@@ -26,9 +26,9 @@ for (let l = 0; l < L; l++) {
     b.sd.push(Math.sqrt(p.reduce((x, y) => x + (y - m) ** 2, 0) / p.length));
     if (s < S - 1) {
       advanceUntil(lg, 'postseason'); syncPhase(lg);
-      nextOffseasonStep(lg);
+      nextOffseasonStep(lg); nextOffseasonStep(lg); // review → foreign → fa
       const myId = lg.myTeamId; lg.myTeamId = '__none__'; aiSignFreeAgents(lg); lg.myTeamId = myId;
-      nextOffseasonStep(lg); nextOffseasonStep(lg); nextOffseasonStep(lg);
+      while (lg.phase !== 'regular') nextOffseasonStep(lg);
       autoDepthChart(lg.teams.find((t) => t.id === myId));
     }
   }

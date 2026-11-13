@@ -1,7 +1,7 @@
 // 리그(10개 구단 + 로스터) 생성과 기본 라인업 구성
 import { Rng } from '../core/rng.js';
 import { KBO_TEAMS, SHORT_NAME } from './names.js';
-import { makeHitter, makePitcher, offenseScore, pitcherScore, resetPlayerIds, initContract, overall } from './playerGen.js';
+import { makeHitter, makePitcher, offenseScore, pitcherScore, resetPlayerIds, initContract, overall, makeForeignPlayer, resetForeignNames, foreignAsk } from './playerGen.js';
 
 // 1군 엔트리 26명: 야수 13 + 투수 13
 const HITTER_SLOTS = [
@@ -16,6 +16,7 @@ const PITCHER_SLOTS = [
 export function generateLeague(seed = 'default') {
   const rng = new Rng('league', seed);
   resetPlayerIds(1);
+  resetForeignNames();
   const usedNames = new Set();
   const teams = KBO_TEAMS.map((info) => {
     const teamTier = rng.normal(0, 1); // 구단별 전력 차 (평준화 단계에서 일부만 반영)
@@ -58,6 +59,23 @@ export function generateLeague(seed = 'default') {
         teams[ti][list][i] = p;
         tally[ti] += overall(p) * W(i, list === 'reserve');
       });
+    }
+  }
+  // 외국인 선수: 선발 2 + 타자 1 + 아시아쿼터 불펜 1 (같은 유형의 가장 약한 선수를 대체, 포수 제외)
+  for (const t of teams) {
+    for (const spec of [{ type: 'P', role: 'SP' }, { type: 'P', role: 'SP' }, { type: 'H' }, { type: 'P', role: 'RP', asia: true }]) {
+      const fp = makeForeignPlayer(rng, { ...spec, usedNames });
+      fp.contract = { salary: foreignAsk(fp), years: 1 };
+      delete fp.asking;
+      delete fp.report;
+      const same = t.roster.filter((p) => p.type === fp.type && !p.foreign && (fp.type === 'H' ? p.pos !== 'C' : p.role === fp.role));
+      const weakest = same.sort((a, b) => overall(a) - overall(b))[0];
+      if (fp.type === 'H' && weakest.pos !== fp.pos) {
+        const d = Math.max(45, fp.ratings.def[fp.pos] ?? 50);
+        fp.pos = weakest.pos;
+        fp.ratings.def = { ...weakest.ratings.def, [weakest.pos]: d };
+      }
+      t.roster[t.roster.indexOf(weakest)] = fp;
     }
   }
   equalizeTeams(teams, { tiers: teams.map((t) => t.tier * 0.3) });

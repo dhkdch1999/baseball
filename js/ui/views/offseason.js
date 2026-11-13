@@ -5,6 +5,7 @@ import { nextOffseasonStep } from '../../league/career.js';
 import { OFF_STEPS, STEP_KO, draftOnClock, draftPlayer, runDraft, DRAFT_ROUNDS, fmtMoney } from '../../league/offseason.js';
 import { overall, scoutPotential } from '../../data/playerGen.js';
 import { esc, OVR, POT, pLink, posLabel, teamChip, toast, R } from '../common.js';
+import { renderForeignStep } from './foreign.js';
 
 let dFilter = 'all';
 
@@ -16,12 +17,15 @@ export const offseasonView = {
     const steps = OFF_STEPS.map((s) => `<span class="step ${s === step ? 'cur' : OFF_STEPS.indexOf(s) < OFF_STEPS.indexOf(step) ? 'done' : ''}">${STEP_KO[s]}</span>`).join('<span class="arrow">›</span>');
     let body = '';
     if (step === 'review') body = review(lg);
+    else if (step === 'foreign') body = '<div id="foreignStep"></div>';
     else if (step === 'fa') body = `<p>FA 시장이 열렸습니다. <a href="#" data-nav="fa">FA 화면</a>에서 선수에게 제안하거나, <a href="#" data-nav="trade">트레이드</a>, <a href="#" data-nav="roster">로스터 정리</a>를 하세요.
       다음 단계로 넘어가면 AI 구단들이 남은 FA를 영입합니다.</p><button class="primary" id="oNext">드래프트로 진행</button>`;
     else if (step === 'draft') body = draft(lg);
     else body = `<p>${lg.season + 1} 시즌 준비가 끝났습니다. 로스터와 라인업을 확인하고 시즌을 시작하세요.</p>
       <div class="row"><button data-nav="roster">로스터 확인</button><button class="primary" id="oNext">${lg.season + 1} 시즌 시작</button></div>`;
     el.innerHTML = `<section class="card"><h2>${lg.season} 오프시즌</h2><div class="steps">${steps}</div>${body}</section>`;
+    const fs = el.querySelector('#foreignStep');
+    if (fs) renderForeignStep(fs, lg, (save) => { if (save) persist(); render(); });
     const next = el.querySelector('#oNext');
     if (next) next.onclick = () => {
       nextOffseasonStep(lg);
@@ -68,7 +72,7 @@ function review(lg) {
         ${rep.resigned.length ? `<details><summary>재계약 ${rep.resigned.length}명</summary>${rep.resigned.map((r) => `${esc(r.name)} ${fmtMoney(r.from)} → ${fmtMoney(r.to)}`).join('<br>')}</details>` : ''}
       </div>
     </div>
-    <button class="primary" id="oNext">FA 시장 열기</button>`;
+    <button class="primary" id="oNext">다음: 외국인 선수</button>`;
 }
 
 function draft(lg) {

@@ -4,11 +4,11 @@ import { findTeamOf } from '../../league/roster.js';
 import { BAT_KEYS, PIT_KEYS, avg, obp, slg, ops, era, whip, war, leagueBaseline, careerLine, sumLines } from '../../league/stats.js';
 import { veloKmh } from '../../data/ratings.js';
 import { overall } from '../../data/playerGen.js';
-import { esc, R, OVR, POT, fmtMoney, POS_KO, PITCH_TYPES, handLabel, statusBadges, openModal, table, fmt3, fmt2 } from '../common.js';
+import { esc, R, OVR, POT, fmtMoney, POS_KO, PITCH_TYPES, handLabel, statusBadges, openModal, table, fmt3, fmt2, ratingBars } from '../common.js';
 import { fmtIP } from '../../core/util.js';
 
 function findPlayer(lg, id) {
-  return allPlayers(lg).find((p) => p.id === id) || (lg.draftPool || []).find((p) => p.id === id);
+  return allPlayers(lg).find((p) => p.id === id) || (lg.draftPool || []).find((p) => p.id === id) || (lg.foreignPool || []).find((p) => p.id === id);
 }
 
 export function openPlayer(lg, id) {
@@ -18,11 +18,14 @@ export function openPlayer(lg, id) {
   const team = where?.team;
   const r = p.ratings;
   const affil = team ? `${esc(team.name)} · ${where.where === 'roster' ? '1군' : '2군'}`
-    : lg.freeAgents.includes(p) ? '자유계약(FA)' : '드래프트 대상';
+    : lg.freeAgents.includes(p) ? '자유계약(FA)' : p.report ? '외국인 영입 후보' : '드래프트 대상';
   const contract = p.contract ? `${fmtMoney(p.contract.salary)} · 잔여 ${p.contract.years}년` : p.asking ? `요구 ${fmtMoney(p.asking.salary)} × ${p.asking.years}년` : '-';
 
   let ratingsHtml;
-  if (p.type === 'H') {
+  if (p.report) {
+    ratingsHtml = `<p class="subtle">스카우트 리포트 (실제와 다를 수 있음) · 예상 종합 ${p.report.ovr - 5}~${p.report.ovr + 5}</p><div class="bars">${ratingBars(p, p.report.keys, true)}</div>
+      <p class="subtle">메모: ${esc(p.report.note)}</p>`;
+  } else if (p.type === 'H') {
     const defs = Object.entries(r.def).sort((a, b) => b[1] - a[1]).map(([pos, v]) => `${POS_KO[pos]} ${R(v)}`).join(' · ');
     ratingsHtml = `<div class="rgrid">
       <div>컨택</div><div>${R(r.contact)}</div><div>파워</div><div>${R(r.power)}</div>
@@ -63,14 +66,14 @@ export function openPlayer(lg, id) {
   openModal(`
     <div class="pl-head">
       <div>
-        <h2>${esc(p.name)} <span class="subtle">${p.type === 'P' ? (p.role === 'SP' ? '선발투수' : '구원투수') : POS_KO[p.pos]}</span></h2>
+        <h2>${esc(p.name)} <span class="subtle">${p.type === 'P' ? (p.role === 'SP' ? '선발투수' : '구원투수') : POS_KO[p.pos]}${p.foreign ? (p.asia ? ' · 아시아쿼터' : ' · 외국인') : ''}</span></h2>
         <div>${affil} · ${p.age}세 · ${handLabel(p)} · 연차 ${p.service}년</div>
         <div>계약: ${contract} ${statusBadges(p)}</div>
         ${p.injury ? `<div class="inj-text">부상: ${esc(p.injury.type)} (복귀까지 약 ${p.injury.days}일)</div>` : ''}
         ${draftInfo}
         ${realLine}
       </div>
-      <div class="ovr-box"><div>종합 ${OVR(p)}</div><div>잠재력 ${POT(p)}</div><div class="subtle">잠재력은 스카우트 평가 (오차 있음)</div></div>
+      <div class="ovr-box">${p.report ? '<div class="subtle">계약 전 실제 능력 비공개</div>' : `<div>종합 ${OVR(p)}</div><div>잠재력 ${POT(p)}</div>`}<div class="subtle">잠재력은 스카우트 평가 (오차 있음)</div></div>
     </div>
     <h3>능력치</h3>${ratingsHtml}
     <h3>기록</h3>${statsHtml || '<p class="subtle">아직 1군 기록이 없습니다.</p>'}

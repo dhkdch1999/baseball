@@ -55,3 +55,22 @@ export function table(headers, rows, cls = '') {
 
 export const fmt3 = (x) => (isFinite(x) ? x.toFixed(3).replace(/^0/, '') : '-');
 export const fmt2 = (x) => (isFinite(x) ? x.toFixed(2) : '-');
+
+/** 능력치 막대 (20~80) */
+export function bar(label, v, { est = false } = {}) {
+  const d = Math.max(20, Math.min(80, Math.round(v / 5) * 5));
+  const pct = ((v - 20) / 60) * 100;
+  return `<div class="rbar"><span class="rl">${label}</span><span class="rt"><i class="g${d}" style="width:${Math.max(3, pct)}%"></i></span><span class="rv r g${d}">${est ? '≈' : ''}${d}</span></div>`;
+}
+
+/** 선수 유형에 맞는 주요 능력치 막대 묶음 */
+export function ratingBars(p, ratings = p.ratings, est = false) {
+  if (p.type === 'P') {
+    const best = (ratings.pitches || p.ratings.pitches || []).slice().sort((a, b) => b.grade - a.grade)[0];
+    return [bar('구속', ratings.velo, { est }), bar('제구', ratings.control, { est }), bar('구위', ratings.stuff, { est }), bar('스태미나', ratings.stamina, { est }),
+      best && !est ? bar(`주무기(${PITCH_TYPES[best.type].ko})`, best.grade) : ''].join('');
+  }
+  return [bar('컨택', ratings.contact, { est }), bar('파워', ratings.power, { est }), bar('선구안', ratings.eye, { est }),
+    ratings.avoidK != null ? bar('삼진회피', ratings.avoidK, { est }) : '', bar('주력', ratings.speed, { est }),
+    !est && p.ratings.def?.[p.pos] != null ? bar(`수비(${POS_SHORT_KO[p.pos]})`, p.ratings.def[p.pos]) : ''].join('');
+}

@@ -50,6 +50,7 @@ export function release(league, team, pid) {
   const [p] = arr.splice(i, 1);
   removeFromDepth(team, pid);
   p.contract = null;
+  if (p.foreign) return { ok: true, msg: `${p.name} 방출 (외국인 선수는 리그를 떠납니다)` };
   league.freeAgents.push(p);
   return { ok: true, msg: `${p.name} 방출 (자유계약 선수 명단으로 이동)` };
 }

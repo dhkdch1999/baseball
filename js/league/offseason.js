@@ -3,6 +3,7 @@ import { Rng } from '../core/rng.js';
 import { clamp } from '../core/util.js';
 import {
   overall, potentialOverall, marketSalary, serviceSalary, makeProspect, getNextPlayerId, scoutPotential,
+  makeForeignPlayer, foreignAsk, foreignCount, FOREIGN_MAX, ASIA_MAX,
 } from '../data/playerGen.js';
 import { autoRoster, autoDepthChart, equalizeTeams } from '../data/teamGen.js';
 import { makeSchedule } from './schedule.js';
@@ -10,8 +11,8 @@ import { leagueBaseline, war, seasonKey, avg, era } from './stats.js';
 import { teamById, myTeam, addNews, allPlayers, allTeamPlayers } from './season.js';
 import { ensureLineup, payroll, TOTAL_MAX, ACTIVE_MAX } from './roster.js';
 
-export const OFF_STEPS = ['review', 'fa', 'draft', 'ready'];
-export const STEP_KO = { review: '시즌 결산', fa: 'FA 시장', draft: '신인 드래프트', ready: '새 시즌 준비' };
+export const OFF_STEPS = ['review', 'foreign', 'fa', 'draft', 'ready'];
+export const STEP_KO = { review: '시즌 결산', foreign: '외국인 선수', fa: 'FA 시장', draft: '신인 드래프트', ready: '새 시즌 준비' };
 export const SOFT_CAP = 1_400_000; // 만원 = 140억 (AI 구단 FA 지출 기준)
 
 const nameOf = (lg, id) => teamById(lg, id)?.name;
@@ -214,6 +215,11 @@ function developAndContracts(lg) {
         const p = arr[i];
         if (!p.contract) p.contract = { salary: 3000, years: 1 };
         p.contract.years--;
+        if (p.foreign) {
+          // 외국인 선수는 FA가 아니라 '외국인 선수' 단계에서 재계약/결별을 정한다
+          if (p.contract.years <= 0) p.foreignPending = true;
+          continue;
+        }
         if (p.contract.years > 0) continue;
         if (p.service >= 8 && t.id !== lg.myTeamId && overall(p) >= 47 && p.age <= 35 && rng.chance(0.6)) {
           // AI 구단은 상당수 FA를 원소속팀에서 잔류시킨다
@@ -285,6 +291,14 @@ export function offerFA(lg, pid, salary, years) {
   if (t.roster.length < ACTIVE_MAX) t.roster.push(p); else t.reserve.push(p);
   addNews(lg, `[FA 계약] ${t.name}, ${p.name}와 ${years}년 총액 ${fmtMoney(salary * years)} 계약`, t.id);
   return { ok: true, msg: `${p.name} 영입 성공!` };
+}
+
+/** FA 제안 수락 가능성 (0~1). offerFA와 같은 기준 */
+export function faAcceptChance(p, salary, years) {
+  const ask = p.asking || { salary: marketSalary(p), years: 1 };
+  const yearsAdj = 1 + 0.04 * clamp(years - ask.years, -2, 2) * (p.age >= 31 ? 1 : -0.5);
+  const score = (salary / ask.salary) * yearsAdj;
+  return clamp((score - 0.97) / 0.06, 0, 1);
 }
 
 /** AI 구단 FA 영입 */
@@ -449,3 +463,119 @@ export function fmtMoney(manwon) {
 }
 
 export { scoutPotential, avg, era };
+
+// ───────────── 외국인 선수 ─────────────
+
+/** 외국인 선수 단계 시작: 재계약 대상 정리 + 후보 풀 생성 */
+export function startForeignMarket(lg) {
+  const rng = new Rng('foreignpool', lg.seed, lg.season);
+  const used = new Set(allPlayers(lg).map((p) => p.name));
+  const pool = [];
+  const add = (n, spec) => { for (let i = 0; i < n; i++) pool.push(makeForeignPlayer(rng, { ...spec, usedNames: used })); };
+  add(14, { type: 'P', role: 'SP' });
+  add(5, { type: 'P', role: 'RP' });
+  add(13, { type: 'H' });
+  add(4, { type: 'P', role: 'SP', asia: true });
+  add(3, { type: 'P', role: 'RP', asia: true });
+  add(2, { type: 'H', asia: true });
+  lg.foreignPool = pool;
+  lg.nextPlayerId = getNextPlayerId();
+  const key = seasonKey(lg.season);
+  const base = leagueBaseline(allTeamPlayers(lg), key);
+  for (const t of lg.teams) {
+    for (const p of [...t.roster, ...t.reserve]) {
+      if (!p.foreignPending) continue;
+      const w = p.stats?.[key] ? war(p, p.stats[key], base) : 0;
+      p.lastWar = w;
+      p.renewAsk = Math.round(Math.max(foreignAsk(p, true), (p.contract?.salary || 0) * (w >= 3 ? 1.25 : w >= 1.5 ? 1.1 : 0.9)) / 1000) * 1000;
+    }
+  }
+  lg.offseason.foreignDecisions = {};
+}
+
+/** 팀의 외국인 슬롯 사용 현황 (결별 예정 선수는 제외) */
+export function foreignSlots(lg, team) {
+  const rel = new Set(Object.entries(lg.offseason?.foreignDecisions || {}).filter(([, v]) => v === 'release').map(([k]) => Number(k)));
+  const c = foreignCount([...team.roster, ...team.reserve], team.id === lg.myTeamId ? rel : null);
+  return { ...c, maxReg: FOREIGN_MAX, maxAsia: ASIA_MAX };
+}
+
+export function setForeignDecision(lg, pid, decision) {
+  lg.offseason.foreignDecisions ??= {};
+  lg.offseason.foreignDecisions[pid] = decision; // 'keep' | 'release'
+}
+
+function placeNew(team, p) {
+  if (team.roster.length < ACTIVE_MAX) team.roster.push(p); else team.reserve.push(p);
+}
+
+export function signForeign(lg, pid, teamId = lg.myTeamId) {
+  const i = (lg.foreignPool || []).findIndex((p) => p.id === pid);
+  if (i < 0) return { ok: false, msg: '후보 명단에 없는 선수입니다' };
+  const p = lg.foreignPool[i];
+  const t = teamById(lg, teamId);
+  const sl = foreignSlots(lg, t);
+  if (p.asia ? sl.asia >= sl.maxAsia : sl.reg >= sl.maxReg) {
+    return { ok: false, msg: p.asia ? '아시아쿼터 자리가 없습니다. 먼저 기존 선수와 결별하세요' : `외국인 선수는 최대 ${FOREIGN_MAX}명입니다. 먼저 기존 선수와 결별하세요` };
+  }
+  if (t.roster.length + t.reserve.length >= TOTAL_MAX) return { ok: false, msg: `소속 선수 한도(${TOTAL_MAX}명)를 넘습니다` };
+  lg.foreignPool.splice(i, 1);
+  p.contract = { salary: p.asking.salary, years: 1 };
+  delete p.asking;
+  delete p.report; // 계약하면 실제 능력이 보인다
+  p.signedSeason = lg.season + 1;
+  placeNew(t, p);
+  if (teamId === lg.myTeamId || overall(p) >= 58) {
+    addNews(lg, `[외국인] ${t.short}, ${p.asia ? '아시아쿼터 ' : ''}${p.type === 'P' ? (p.role === 'SP' ? '선발투수' : '불펜투수') : '타자'} ${p.name} 영입 (${fmtMoney(p.contract.salary)})`, t.id);
+  }
+  return { ok: true, msg: `${p.name} 영입 완료! 스카우트 리포트와 실제 능력은 다를 수 있습니다` };
+}
+
+function removeFromTeam(t, p) {
+  for (const arr of [t.roster, t.reserve]) { const i = arr.indexOf(p); if (i >= 0) arr.splice(i, 1); }
+}
+
+/** 외국인 단계 종료: 내 결정 반영 + AI 구단 재계약/교체 */
+export function finishForeignStep(lg) {
+  const rng = new Rng('aiforeign', lg.seed, lg.season);
+  const dec = lg.offseason?.foreignDecisions || {};
+  for (const t of lg.teams) {
+    const mine = t.id === lg.myTeamId;
+    for (const p of [...t.roster, ...t.reserve]) {
+      if (!p.foreignPending) continue;
+      let keep;
+      if (mine) keep = dec[p.id] !== 'release';
+      else keep = (p.lastWar >= 1.5 || overall(p) >= 57) && p.age <= 35 && rng.chance(0.85);
+      delete p.foreignPending;
+      if (keep) {
+        p.contract = { salary: p.renewAsk || foreignAsk(p, true), years: 1 };
+        if (mine) addNews(lg, `[외국인] ${p.name} 재계약 (${fmtMoney(p.contract.salary)})`, t.id);
+      } else {
+        removeFromTeam(t, p);
+        addNews(lg, `[외국인] ${t.short} ${p.name}와 결별`, t.id);
+      }
+      delete p.renewAsk;
+    }
+    if (mine) continue;
+    // AI: 빈 자리를 후보 중 최고 평가 선수로 채움
+    for (let guard = 0; guard < 6; guard++) {
+      const sl = foreignSlots(lg, t);
+      const cur = [...t.roster, ...t.reserve].filter((p) => p.foreign && !p.asia);
+      let want = null;
+      if (sl.reg < sl.maxReg) want = { asia: false, type: cur.some((p) => p.type === 'H') ? 'P' : 'H' };
+      else if (sl.asia < sl.maxAsia) want = { asia: true, type: null };
+      if (!want) break;
+      const cands = lg.foreignPool.filter((p) => p.asia === want.asia && (!want.type || p.type === want.type) && (want.type !== 'P' || p.role === 'SP'))
+        .sort((a, b) => b.report.ovr + rng.next() * 3 - a.report.ovr);
+      if (!cands.length) break;
+      signForeign(lg, cands[0].id, t.id);
+    }
+    autoRoster(t);
+  }
+  for (const p of lg.foreignPool || []) { delete p.report; }
+  lg.foreignPool = [];
+  ensureLineup(myTeam(lg));
+}
+
+/** 신규 영입 후 첫 시즌 전까지는 리포트만 보이게 할지 판단할 때 쓰는 값 */
+export function isScouted(p) { return !!p.report; }

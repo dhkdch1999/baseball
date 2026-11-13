@@ -41,7 +41,14 @@ for (let s = 0; s < N; s++) {
   console.log(`  우승: ${h.champion}  MVP: ${h.mvp?.name} (${h.mvp?.war.toFixed(1)})`);
   const rep = lg.offseason.report;
   console.log(`  내 팀: 은퇴 ${rep.retired.length}, FA ${rep.toFA.length}, 재계약 ${rep.resigned.length}, 최대 성장 ${rep.changes.sort((x, y) => y.delta - x.delta)[0]?.name}(+${rep.changes[0]?.delta.toFixed(1)})`);
-  nextOffseasonStep(lg); // → fa
+  nextOffseasonStep(lg); // → foreign
+  console.log(`  외국인 후보 ${lg.foreignPool.length}명, 재계약 대상 ${lg.teams.flatMap((t) => [...t.roster, ...t.reserve]).filter((p) => p.foreignPending).length}명`);
+  nextOffseasonStep(lg); // → fa (AI 외국인 교체)
+  for (const t of lg.teams) {
+    const f = [...t.roster, ...t.reserve].filter((p) => p.foreign);
+    check(f.filter((p) => !p.asia).length <= 3 && f.filter((p) => p.asia).length <= 1, `${t.short} 외국인 한도`);
+    if (t.id !== lg.myTeamId) check(f.length === 4, `${t.short} AI 외국인 4명 (${f.length})`);
+  }
   console.log(`  FA 시장 ${lg.freeAgents.length}명`);
   nextOffseasonStep(lg); // → draft (AI 지명 진행, 내 차례에서 멈춤)
   nextOffseasonStep(lg); // → ready (내 픽 자동)

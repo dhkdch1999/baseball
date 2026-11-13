@@ -158,3 +158,92 @@ body.busy main { opacity: .55; pointer-events: none; }
 .mode-pick button.sel { border-color: var(--accent); background: #eef4ff; }
 .tc-star { font-size: 12px; color: #374151; }
 @media (max-width: 600px) { .mode-pick { grid-template-columns: 1fr; } }
+
+/* ───── 능력치 막대 ───── */
+.bars { display: grid; gap: 5px; margin: 10px 0; }
+.rbar { display: grid; grid-template-columns: 92px 1fr 44px; align-items: center; gap: 8px; font-size: 13px; }
+.rbar .rl { color: #4b5563; }
+.rbar .rt { height: 8px; background: #eef0f3; border-radius: 5px; overflow: hidden; }
+.rbar .rt i { display: block; height: 100%; border-radius: 5px; background: #9ca3af; }
+.rbar .rt i.g80, .rbar .rt i.g75, .rbar .rt i.g70 { background: #16a34a; }
+.rbar .rt i.g65, .rbar .rt i.g60 { background: #4ade80; }
+.rbar .rt i.g55, .rbar .rt i.g50 { background: #60a5fa; }
+.rbar .rt i.g45, .rbar .rt i.g40 { background: #fbbf24; }
+.rbar .rt i.g35, .rbar .rt i.g30, .rbar .rt i.g25, .rbar .rt i.g20 { background: #f87171; }
+.rbar .rv { text-align: right; }
+
+/* ───── FA 시장 ───── */
+.fa-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.fa-stats { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13.5px; color: #4b5563; }
+.fa-stats b { color: var(--ink); }
+.fa-filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0 12px; }
+.fa-filters .tabs { border-bottom: none; }
+.fa-filters .tabs button { border-radius: 18px; padding: 6px 14px; }
+.fa-filters .tabs button.active { background: var(--accent); color: #fff; box-shadow: none; }
+.fa-filters input { width: 140px; }
+.fa-body { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; align-items: start; }
+.fa-list { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; max-height: 72vh; overflow-y: auto; }
+.fa-list-head { display: grid; grid-template-columns: 1fr 110px 110px; padding: 8px 14px; font-size: 12px; color: var(--muted); background: #fafbfc; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 1; }
+.fa-row { display: grid; grid-template-columns: 1fr 110px 110px; align-items: center; width: 100%; text-align: left; border: none; border-bottom: 1px solid #f1f2f4; border-radius: 0; padding: 10px 14px; background: #fff; position: relative; }
+.fa-row:hover { background: #f8fafc; filter: none; }
+.fa-row.sel { background: #eef4ff; box-shadow: inset 4px 0 0 var(--accent); }
+.fa-row .nm { display: grid; gap: 1px; }
+.fa-row .nm b { font-size: 15px; }
+.fa-row .nm .subtle { font-size: 12px; }
+.fa-row .rt { display: flex; gap: 6px; }
+.fa-row .ask { font-weight: 700; font-size: 14px; }
+.fa-row .ask small { font-weight: 400; color: var(--muted); margin-left: 3px; }
+.fa-row .badge { position: absolute; right: 10px; top: 6px; }
+.fa-side { position: sticky; top: 52px; }
+.fa-empty { border: 2px dashed var(--line); border-radius: 12px; padding: 40px 20px; text-align: center; color: var(--muted); }
+.fa-detail { border: 1px solid var(--line); border-radius: 12px; padding: 16px; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.05); }
+.fd-head { display: flex; justify-content: space-between; gap: 10px; }
+.fd-head h3 { margin: 0 0 3px; font-size: 20px; }
+.fd-ovr { text-align: right; display: grid; gap: 4px; font-weight: 700; white-space: nowrap; }
+.fa-detail .season { margin: 4px 0 8px; }
+.cmp { font-size: 13.5px; background: #f6f7f9; border-radius: 8px; padding: 8px 10px; }
+.offer-box { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 10px; }
+.ask-line { font-size: 14px; }
+.field { display: grid; gap: 6px; color: #374151; font-size: 13px; font-weight: 600; }
+.money { display: flex; align-items: center; gap: 6px; }
+.money input { width: 90px; font-size: 18px; font-weight: 800; text-align: right; padding: 6px 8px; }
+.money span { font-size: 15px; font-weight: 700; }
+.money button { padding: 6px 10px; }
+.quick { display: flex; gap: 6px; flex-wrap: wrap; }
+.quick button { font-size: 12.5px; padding: 4px 10px; border-radius: 14px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: none; border-radius: 0; padding: 6px 12px; border-right: 1px solid var(--line); }
+.seg button:last-child { border-right: none; }
+.seg button.on { background: var(--accent); color: #fff; font-weight: 700; }
+.seg button.on.danger { background: #b42318; color: #fff; }
+.total { font-size: 14px; }
+.total b { font-size: 18px; }
+.chance { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; font-size: 13px; font-weight: 600; }
+.chance .meter { height: 12px; }
+.chance .meter i.mid { background: #f59e0b; }
+.chance .meter i.no { background: #ef4444; }
+button.big { padding: 11px; font-size: 16px; }
+.offer-box .tip { margin: 0; }
+@media (max-width: 860px) {
+  .fa-body { grid-template-columns: 1fr; }
+  .fa-side { position: static; order: -1; }
+  .fa-list { max-height: 50vh; }
+  .fa-row, .fa-list-head { grid-template-columns: 1fr 90px 90px; padding: 9px 10px; }
+}
+
+/* ───── 외국인 선수 단계 ───── */
+.slots { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0 12px; }
+.slot-chip { padding: 5px 12px; border-radius: 16px; background: #eef4ff; color: #1d4ed8; font-size: 13.5px; }
+.slot-chip.full { background: #fde4e1; color: #b42318; }
+.fx-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
+.fx-card { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 6px; background: #fff; }
+.fx-card.leaving { opacity: .55; background: #fafafa; }
+.fx-head { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+.fx-head b { font-size: 16px; }
+.tag { font-size: 11px; padding: 1px 7px; border-radius: 10px; background: #f3e8ff; color: #7c3aed; }
+.tag.asia { background: #e0f2fe; color: #0369a1; }
+.fx-decide { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13.5px; }
+.fx-buy { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-top: 1px solid #f1f2f4; padding-top: 8px; }
+.est { font-size: 13px; white-space: nowrap; }
+.fx-card .note { font-size: 12.5px; }
+.fx-card .bars { margin: 4px 0; }

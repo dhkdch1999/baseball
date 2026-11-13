@@ -237,3 +237,89 @@ export function makeProspect(rng, usedNames) {
   p.contract = null;
   return p;
 }
+
+// ───────────── 외국인 선수 ─────────────
+// KBO 규정: 구단당 외국인 3명 + 아시아쿼터 1명
+export const FOREIGN_MAX = 3;
+export const ASIA_MAX = 1;
+export const FOREIGN_NEW_CAP = 140000; // 신규 외국인 연봉 상한 (만원, 약 100만 달러)
+export const ASIA_NEW_CAP = 28000; // 아시아쿼터 상한 (약 20만 달러)
+
+const FOREIGN_NAMES = [
+  '스미스', '존슨', '윌리엄스', '브라운', '가르시아', '마르티네스', '로페스', '곤잘레스', '페레스', '산체스', '라미레스',
+  '토레스', '플로레스', '리베라', '고메스', '크루스', '모랄레스', '오르티스', '데이비스', '밀러', '윌슨', '무어', '앤더슨',
+  '토마스', '잭슨', '해리스', '마틴', '톰슨', '워커', '앨런', '라이트', '스콧', '그린', '베이커', '애덤스', '넬슨', '캠벨',
+  '미첼', '로버츠', '카터', '필립스', '에반스', '터너', '파커', '콜린스', '에드워즈', '스튜어트', '모리스', '머피', '쿡',
+  '로저스', '모건', '피터슨', '쿠퍼', '리드', '베일리', '켈리', '하워드', '콕스', '리처드슨', '왓슨', '베넷', '그레이',
+  '헤이스', '마이어스', '포드', '해밀턴', '그레이엄', '설리번', '월리스', '헤인스', '바스케스', '메디나', '카스티요',
+  '로하스', '멘도사', '게레로', '베탄코트', '알몬테', '소토', '히메네스', '피네다', '발렌수엘라', '산타나', '폰세',
+];
+const ASIA_NAMES = [
+  '다카하시', '이토', '와타나베', '가토', '요시다', '야마다', '사사키', '마쓰모토', '이노우에', '기무라', '하야시',
+  '시미즈', '야마자키', '모리', '이케다', '하시모토', '이시카와', '오가와', '후지타', '오카다', '린', '천', '황',
+  '장', '우', '차이', '쉬', '쩡', '해밀', '오코너', '맥도널드', '톰킨스',
+];
+
+const usedForeign = new Set();
+export const resetForeignNames = (names = []) => { usedForeign.clear(); names.forEach((n) => usedForeign.add(n)); };
+function foreignName(rng, asia, usedNames) {
+  const pool = asia ? ASIA_NAMES : FOREIGN_NAMES;
+  for (let i = 0; i < 40; i++) {
+    const n = rng.pick(pool);
+    if (!usedNames?.has(n) && !usedForeign.has(n)) { usedNames?.add(n); usedForeign.add(n); return n; }
+  }
+  // 겹치면 이니셜을 붙인다 (예: J.스미스)
+  const n = `${rng.pick('ABCDEJMRT'.split(''))}.${rng.pick(pool)}`;
+  usedNames?.add(n);
+  return n;
+}
+
+/** 외국인 신규 영입 요구 연봉 (만원) */
+export function foreignAsk(p, renew = false) {
+  const v = overall(p);
+  if (p.asia) return Math.round(Math.max(10000, Math.min(renew ? 60000 : ASIA_NEW_CAP, 12000 + (v - 45) * 1500)) / 500) * 500;
+  const base = 40000 + (v - 50) * 7000;
+  return Math.round(Math.max(30000, Math.min(renew ? 250000 : FOREIGN_NEW_CAP, base)) / 1000) * 1000;
+}
+
+/**
+ * 외국인 후보 생성. 스카우트 리포트(report)는 실제 능력에 오차를 섞은 값이고,
+ * 계약해야 진짜 능력이 드러난다.
+ */
+export function makeForeignPlayer(rng, { type = 'P', role = 'SP', asia = false, usedNames = null } = {}) {
+  const tier = asia ? rng.normal(-1.5, 3.5) : type === 'P' ? rng.normal(0.5, 4) : rng.normal(3.5, 4);
+  const p = type === 'P'
+    ? makePitcher(rng, role, tier, null)
+    : makeHitter(rng, rng.weighted([['1B', 28], ['RF', 18], ['LF', 14], ['3B', 14], ['CF', 12], ['2B', 7], ['SS', 7]]), tier, null);
+  p.name = foreignName(rng, asia, usedNames);
+  p.age = rng.int(25, 33);
+  p.foreign = true;
+  p.asia = asia;
+  p.service = 0;
+  // 전성기 나이라 잠재력 = 현재 능력 근처
+  for (const k of Object.keys(p.potential)) {
+    const cur = k === 'def' ? p.ratings.def[p.pos] : p.ratings[k];
+    if (cur != null) p.potential[k] = Math.max(cur, Math.min(80, cur + Math.round(Math.max(0, rng.normal(1, 2)))));
+  }
+  const bias = rng.normal(0, 4); // 스카우트 오차 (선수마다 고정)
+  const keys = type === 'P' ? ['velo', 'control', 'stuff', 'stamina'] : ['contact', 'power', 'eye', 'speed'];
+  p.report = {
+    ovr: Math.round(overall(p) + bias),
+    keys: Object.fromEntries(keys.map((k) => [k, Math.round(Math.max(20, Math.min(80, p.ratings[k] + bias + rng.normal(0, 3))))])),
+    note: rng.pick(type === 'P'
+      ? ['마이너리그 트리플A 선발 경험 풍부', '빠른 공이 강점, 제구는 기복', '변화구 완성도가 높음', '이닝 소화력이 좋다는 평가', '일본 리그 경험 있음', '부상 이력은 없음']
+      : ['트리플A 장타력 상위권', '컨택형, 삼진이 적음', '선구안이 좋아 출루율이 높음', '수비 안정감이 장점', '빠른 발과 주루 센스', '변화구 대처에 물음표']),
+  };
+  p.contract = null;
+  p.asking = { salary: foreignAsk(p), years: 1 };
+  return p;
+}
+
+export function foreignCount(players, exclude = null) {
+  let reg = 0, asia = 0;
+  for (const p of players) {
+    if (!p.foreign || exclude?.has(p.id)) continue;
+    if (p.asia) asia++; else reg++;
+  }
+  return { reg, asia };
+}

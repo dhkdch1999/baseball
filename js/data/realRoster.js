@@ -5,7 +5,7 @@ import { Rng } from '../core/rng.js';
 import { clamp } from '../core/util.js';
 import { KBO_TEAMS, SHORT_NAME } from './names.js';
 import { POS_CROSSOVER } from './ratings.js';
-import { makeHitter, makePitcher, initContract, resetPlayerIds, marketSalary } from './playerGen.js';
+import { makeHitter, makePitcher, initContract, resetPlayerIds, marketSalary, resetForeignNames } from './playerGen.js';
 import { autoDepthChart } from './teamGen.js';
 
 export const REAL_SEASON = 2026;
@@ -20,6 +20,9 @@ const FOREIGN = new Set([
   '에르난데스', '보쉴리', '카라스코', '대니엘', '타카다', '유토', '해치', '이이무라', '치리노스', '짐머맨', '미야지',
   '로젠버그', '보스', '버하겐', '와일스', '케네디', '클레빈저', '쿠싱', '사토시', '리오스', '긴지로', '타무라',
 ]);
+
+// 아시아쿼터 선수
+const ASIA = new Set(['웰스', '왕옌청', '타케다', '시라카와', '스기모토', '타카다', '유토', '이이무라', '미야지', '사토시', '긴지로', '타무라', '토다', '데일']);
 
 // 세부 수비 위치 (Daum은 내야/외야까지만 제공 → 주전급은 실제 포지션으로 지정, 나머지는 기록으로 추정)
 const POS = {
@@ -134,6 +137,7 @@ const BREAKING = [['SL', 30], ['CH', 22], ['CU', 18], ['FK', 14], ['CT', 10], ['
 export function generateRealLeague(seed = 'kbo-real', gameYear = REAL_SEASON + 1) {
   const rng = new Rng('real', seed);
   resetPlayerIds(1);
+  resetForeignNames([...FOREIGN]);
   const hitters = loadHitters();
   const pitchers = loadPitchers();
   const hR = hitterRatings(hitters);
@@ -145,7 +149,7 @@ export function generateRealLeague(seed = 'kbo-real', gameYear = REAL_SEASON + 1
   const careerBase = (name, age) => {
     const foreign = FOREIGN.has(name);
     return {
-      injury: null, stats: {}, condition: 0, fatigue: 0, draft: null, foreign,
+      injury: null, stats: {}, condition: 0, fatigue: 0, draft: null, foreign, asia: foreign && ASIA.has(name),
       service: foreign ? 0 : Math.max(0, Math.min(18, age - 20)), scoutNoise: rng.normal(0, 3), real: true,
     };
   };
@@ -219,8 +223,12 @@ export function generateRealLeague(seed = 'kbo-real', gameYear = REAL_SEASON + 1
 
   const teams = KBO_TEAMS.map((info) => {
     const g = byTeam.get(info.id);
-    const H = g.H.sort((a, b) => b.realStat.PA - a.realStat.PA);
-    const P = g.P.sort((a, b) => b.realStat.IP - a.realStat.IP);
+    // 시즌 중 교체된 외국인까지 기록에 남아 있으므로, 비중이 큰 순서로 외국인 3명 + 아시아쿼터 1명만 남긴다
+    const weight = (p) => (p.type === 'H' ? p.realStat.PA / 600 : p.realStat.IP / 150);
+    const fr = [...g.H, ...g.P].filter((p) => p.foreign).sort((a, b) => weight(b) - weight(a));
+    const keep = new Set([...fr.filter((p) => !p.asia).slice(0, 3), ...fr.filter((p) => p.asia).slice(0, 1)]);
+    const H = g.H.filter((p) => !p.foreign || keep.has(p)).sort((a, b) => b.realStat.PA - a.realStat.PA);
+    const P = g.P.filter((p) => !p.foreign || keep.has(p)).sort((a, b) => b.realStat.IP - a.realStat.IP);
     // 1군 26명: 야수 13 (포수 2 보장) + 투수 13 (선발 5 보장)
     const act = new Set();
     H.filter((p) => p.pos === 'C').slice(0, 2).forEach((p) => act.add(p));
