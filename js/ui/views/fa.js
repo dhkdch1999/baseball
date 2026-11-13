@@ -76,7 +76,7 @@ function detailPanel(lg, p) {
         <div>${statusBadges(p)}</div></div>
       <div class="fd-ovr"><div>종합 ${OVR(p)}</div><div>잠재력 ${POT(p)}</div></div>
     </div>
-    <div class="bars">${ratingBars(p)}</div>
+    <div class="bars">${ratingBars(p, p.ratings, false, { pot: true })}</div>
     <div class="subtle season">${lastSeason(lg, p)}</div>
     ${compareText(lg, p)}
     <div class="offer-box">

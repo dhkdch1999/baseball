@@ -190,6 +190,18 @@ export function potentialOverall(p) {
 }
 
 /** 스카우트가 보는 잠재력 (오차 포함, 5단위) */
+/** 능력치별 잠재력 (스카우트 평가: 선수·항목마다 고정된 오차가 있다). 성장 여지가 없는 항목은 null */
+export function scoutPotentialKey(p, key) {
+  const cur = key === 'def' ? p.ratings.def?.[p.pos] : p.ratings[key];
+  const pot = p.potential?.[key];
+  if (cur == null || pot == null) return null;
+  let h = 0;
+  for (const c of `${p.id}:${key}`) h = (h * 31 + c.charCodeAt(0)) | 0;
+  const noise = ((h >>> 0) % 1000) / 1000 * 5 - 2.5; // -2.5 ~ +2.5
+  const est = Math.round(Math.min(80, pot + noise + (p.scoutNoise || 0) * 0.5));
+  return est > cur + 1 ? est : null;
+}
+
 export function scoutPotential(p) {
   const est = Math.max(overall(p), potentialOverall(p) + (p.scoutNoise || 0));
   return Math.max(20, Math.min(80, Math.round(est / 5) * 5));

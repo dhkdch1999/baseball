@@ -1,6 +1,6 @@
 // UI 공용 도우미
-import { displayRating, POS_KO, POS_SHORT_KO, PITCH_TYPES } from '../data/ratings.js';
-import { overall, scoutPotential } from '../data/playerGen.js';
+import { displayRating, POS_KO, POS_SHORT_KO, PITCH_TYPES, veloKmh } from '../data/ratings.js';
+import { overall, scoutPotential, scoutPotentialKey } from '../data/playerGen.js';
 import { fmtMoney } from '../league/offseason.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -57,20 +57,28 @@ export const fmt3 = (x) => (isFinite(x) ? x.toFixed(3).replace(/^0/, '') : '-');
 export const fmt2 = (x) => (isFinite(x) ? x.toFixed(2) : '-');
 
 /** 능력치 막대 (20~80) */
-export function bar(label, v, { est = false } = {}) {
+export function bar(label, v, { est = false, pot = null, extra = '' } = {}) {
   const d = Math.max(20, Math.min(80, Math.round(v / 5) * 5));
   const pct = ((v - 20) / 60) * 100;
-  return `<div class="rbar"><span class="rl">${label}</span><span class="rt"><i class="g${d}" style="width:${Math.max(3, pct)}%"></i></span><span class="rv r g${d}">${est ? '≈' : ''}${d}</span></div>`;
+  const pd = pot != null ? Math.max(20, Math.min(80, Math.round(pot / 5) * 5)) : null;
+  const potW = pot != null ? Math.max(0, ((pot - 20) / 60) * 100 - pct) : 0;
+  const potHtml = pd != null && pd > d ? `<span class="rp" title="잠재력(스카우트 평가)">→ <span class="r pot g${pd}">${pd}</span></span>` : '';
+  return `<div class="rbar ${pot != null ? 'haspot' : ''}"><span class="rl">${label}</span><span class="rt"><i class="g${d}" style="width:${Math.max(3, pct)}%"></i>${potW > 0 ? `<b class="pt" style="width:${potW}%"></b>` : ''}</span><span class="rv"><span class="r g${d}">${est ? '≈' : ''}${d}</span>${potHtml}${extra}</span></div>`;
 }
 
 /** 선수 유형에 맞는 주요 능력치 막대 묶음 */
-export function ratingBars(p, ratings = p.ratings, est = false) {
+export function ratingBars(p, ratings = p.ratings, est = false, { pot = false, full = false } = {}) {
+  const P = (k) => (pot && !est ? scoutPotentialKey(p, k) : null);
+  const o = (k) => ({ est, pot: P(k) });
   if (p.type === 'P') {
     const best = (ratings.pitches || p.ratings.pitches || []).slice().sort((a, b) => b.grade - a.grade)[0];
-    return [bar('구속', ratings.velo, { est }), bar('제구', ratings.control, { est }), bar('구위', ratings.stuff, { est }), bar('스태미나', ratings.stamina, { est }),
-      best && !est ? bar(`주무기(${PITCH_TYPES[best.type].ko})`, best.grade) : ''].join('');
+    return [bar('구속', ratings.velo, { ...o('velo'), extra: !est ? ` <small class="subtle">${veloKmh(ratings.velo)}km</small>` : '' }), bar('제구', ratings.control, o('control')), bar('구위', ratings.stuff, o('stuff')), bar('스태미나', ratings.stamina, { est }),
+      full ? bar('멘탈', ratings.mental) : '',
+      full ? (ratings.pitches || []).map((x) => bar(PITCH_TYPES[x.type].ko, x.grade)).join('') : best && !est ? bar(`주무기(${PITCH_TYPES[best.type].ko})`, best.grade) : ''].join('');
   }
-  return [bar('컨택', ratings.contact, { est }), bar('파워', ratings.power, { est }), bar('선구안', ratings.eye, { est }),
-    ratings.avoidK != null ? bar('삼진회피', ratings.avoidK, { est }) : '', bar('주력', ratings.speed, { est }),
-    !est && p.ratings.def?.[p.pos] != null ? bar(`수비(${POS_SHORT_KO[p.pos]})`, p.ratings.def[p.pos]) : ''].join('');
+  return [bar('컨택', ratings.contact, o('contact')), bar('파워', ratings.power, o('power')), bar('선구안', ratings.eye, o('eye')),
+    ratings.avoidK != null ? bar('삼진회피', ratings.avoidK, o('avoidK')) : '', bar('주력', ratings.speed, { est }),
+    full ? bar('송구', ratings.arm) : '',
+    full && p.pos === 'C' ? bar('포수 리드', ratings.catcherLead) : '',
+    !est && p.ratings.def?.[p.pos] != null ? bar(`수비(${POS_SHORT_KO[p.pos]})`, p.ratings.def[p.pos], { pot: P('def') }) : ''].join('');
 }

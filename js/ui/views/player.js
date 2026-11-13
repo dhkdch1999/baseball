@@ -25,20 +25,11 @@ export function openPlayer(lg, id) {
   if (p.report) {
     ratingsHtml = `<p class="subtle">스카우트 리포트 (실제와 다를 수 있음) · 예상 종합 ${p.report.ovr} (${p.report.ovr - (p.report.err ?? 4)}~${p.report.ovr + (p.report.err ?? 4)}, 세부 숫자 기준)</p><div class="bars">${ratingBars(p, p.report.keys, true)}</div>
       <p class="subtle">메모: ${esc(p.report.note)}</p>`;
-  } else if (p.type === 'H') {
-    const defs = Object.entries(r.def).sort((a, b) => b[1] - a[1]).map(([pos, v]) => `${POS_KO[pos]} ${R(v)}`).join(' · ');
-    ratingsHtml = `<div class="rgrid">
-      <div>컨택</div><div>${R(r.contact)}</div><div>파워</div><div>${R(r.power)}</div>
-      <div>선구안</div><div>${R(r.eye)}</div><div>삼진회피</div><div>${R(r.avoidK)}</div>
-      <div>주력</div><div>${R(r.speed)}</div><div>송구</div><div>${R(r.arm)}</div>
-      ${p.pos === 'C' ? `<div>포수 리드</div><div>${R(r.catcherLead)}</div>` : ''}
-    </div><div class="subtle" style="margin-top:6px">수비: ${defs}</div>`;
   } else {
-    ratingsHtml = `<div class="rgrid">
-      <div>구속</div><div>${R(r.velo)} <span class="subtle">${veloKmh(r.velo)}km</span></div><div>제구</div><div>${R(r.control)}</div>
-      <div>구위</div><div>${R(r.stuff)}</div><div>스태미나</div><div>${R(r.stamina)}</div>
-      <div>멘탈</div><div>${R(r.mental)}</div>
-    </div><div class="subtle" style="margin-top:6px">변화구: ${r.pitches.map((x) => `${PITCH_TYPES[x.type].ko} ${R(x.grade)}`).join(' · ')}</div>`;
+    const defs = p.type === 'H' ? Object.entries(r.def).sort((a, b) => b[1] - a[1]).map(([pos, v]) => `${POS_KO[pos]} ${R(v)}`).join(' · ') : '';
+    ratingsHtml = `<div class="bars bars2">${ratingBars(p, r, false, { pot: true, full: true })}</div>
+      <div class="subtle" style="margin-top:6px">→ 오른쪽 숫자와 옅은 막대는 항목별 잠재력(스카우트 평가, 오차 있음)입니다. 성장 여지가 없는 항목은 표시되지 않습니다.</div>
+      ${defs ? `<div class="subtle" style="margin-top:4px">포지션별 수비: ${defs}</div>` : ''}`;
   }
 
   // 기록

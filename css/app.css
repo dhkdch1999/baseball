@@ -247,3 +247,12 @@ button.big { padding: 11px; font-size: 16px; }
 .est { font-size: 13px; white-space: nowrap; }
 .fx-card .note { font-size: 12.5px; }
 .fx-card .bars { margin: 4px 0; }
+
+/* 항목별 잠재력 */
+.rbar.haspot, .bars .rbar { grid-template-columns: 92px 1fr 84px; }
+.rbar .rt { display: flex; }
+.rbar .rt b.pt { display: block; height: 100%; background: repeating-linear-gradient(45deg, #c7d2fe 0 4px, #e0e7ff 4px 8px); border-radius: 0 5px 5px 0; }
+.rbar .rv { display: flex; gap: 4px; justify-content: flex-end; align-items: center; white-space: nowrap; }
+.rbar .rp { color: var(--muted); font-size: 12px; }
+.bars2 { grid-template-columns: 1fr 1fr; column-gap: 28px; }
+@media (max-width: 700px) { .bars2 { grid-template-columns: 1fr; } }
