@@ -253,12 +253,12 @@ const FOREIGN_NAMES = [
   '로저스', '모건', '피터슨', '쿠퍼', '리드', '베일리', '켈리', '하워드', '콕스', '리처드슨', '왓슨', '베넷', '그레이',
   '헤이스', '마이어스', '포드', '해밀턴', '그레이엄', '설리번', '월리스', '헤인스', '바스케스', '메디나', '카스티요',
   '로하스', '멘도사', '게레로', '베탄코트', '알몬테', '소토', '히메네스', '피네다', '발렌수엘라', '산타나', '폰세',
-];
+, '브래드쇼', '윈슬로', '허드슨', '에버렛', '맥과이어', '브룩스', '코넬', '댈튼', '개릿', '핸슨', '키팅', '라일리', '오닐', '퀸', '레이놀즈', '샌더스', '바르가스', '살라자르', '로사리오', '에스피노자', '델가도', '폰세카', '카브레라', '비야누에바', '알바레스', '곤살레스', '몬테로', '파디야', '에스코바', '스티븐스', '홀랜드', '웹스터', '포스터', '하딩', '패터슨', '스톤', '버크', '헤일', '웨이드', '버넷', '플레처', '헌트', '로완', '블레이크', '칼훈', '도노반', '쉐퍼', '벨'];
 const ASIA_NAMES = [
   '다카하시', '이토', '와타나베', '가토', '요시다', '야마다', '사사키', '마쓰모토', '이노우에', '기무라', '하야시',
   '시미즈', '야마자키', '모리', '이케다', '하시모토', '이시카와', '오가와', '후지타', '오카다', '린', '천', '황',
   '장', '우', '차이', '쉬', '쩡', '해밀', '오코너', '맥도널드', '톰킨스',
-];
+, '나카무라', '오카모토', '마쓰다', '후지와라', '고바야시', '사이토', '린위민', '천관위', '장즈하오', '우성펑', '리우이', '호지슨', '쿠퍼'];
 
 const usedForeign = new Set();
 export const resetForeignNames = (names = []) => { usedForeign.clear(); names.forEach((n) => usedForeign.add(n)); };
@@ -301,11 +301,17 @@ export function makeForeignPlayer(rng, { type = 'P', role = 'SP', asia = false, 
     const cur = k === 'def' ? p.ratings.def[p.pos] : p.ratings[k];
     if (cur != null) p.potential[k] = Math.max(cur, Math.min(80, cur + Math.round(Math.max(0, rng.normal(1, 2)))));
   }
-  const bias = rng.normal(0, 4); // 스카우트 오차 (선수마다 고정)
+  // 스카우트 리포트: 관측값(실제+오차)을 같은 유형 후보 평균 쪽으로 당겨서(베이즈 추정) 보여준다.
+  // 그냥 실제+오차를 보여주면 "리포트가 좋게 나온 선수"만 고르게 되어 영입 후 늘 실망하게 된다(승자의 저주).
+  const NOISE = 3, TRUE_SD = 8, k = TRUE_SD ** 2 / (TRUE_SD ** 2 + NOISE ** 2);
+  const mu = asia ? 50.5 : type === 'P' ? (role === 'SP' ? 52 : 50) : 53.5;
+  const bias = rng.normal(0, NOISE); // 스카우트 오차 (선수마다 고정)
+  const est = (v, m) => Math.round(Math.max(20, Math.min(80, m + (v + bias + rng.normal(0, 2) - m) * k)));
   const keys = type === 'P' ? ['velo', 'control', 'stuff', 'stamina'] : ['contact', 'power', 'eye', 'speed'];
   p.report = {
-    ovr: Math.round(overall(p) + bias),
-    keys: Object.fromEntries(keys.map((k) => [k, Math.round(Math.max(20, Math.min(80, p.ratings[k] + bias + rng.normal(0, 3))))])),
+    ovr: Math.round(mu + (overall(p) + bias - mu) * k),
+    err: Math.round(Math.sqrt(k) * NOISE * 1.5), // 표시 오차 범위 (약 ±4)
+    keys: Object.fromEntries(keys.map((key) => [key, est(p.ratings[key], 50)])),
     note: rng.pick(type === 'P'
       ? ['마이너리그 트리플A 선발 경험 풍부', '빠른 공이 강점, 제구는 기복', '변화구 완성도가 높음', '이닝 소화력이 좋다는 평가', '일본 리그 경험 있음', '부상 이력은 없음']
       : ['트리플A 장타력 상위권', '컨택형, 삼진이 적음', '선구안이 좋아 출루율이 높음', '수비 안정감이 장점', '빠른 발과 주루 센스', '변화구 대처에 물음표']),

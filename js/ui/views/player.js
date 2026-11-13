@@ -23,7 +23,7 @@ export function openPlayer(lg, id) {
 
   let ratingsHtml;
   if (p.report) {
-    ratingsHtml = `<p class="subtle">스카우트 리포트 (실제와 다를 수 있음) · 예상 종합 ${p.report.ovr - 5}~${p.report.ovr + 5}</p><div class="bars">${ratingBars(p, p.report.keys, true)}</div>
+    ratingsHtml = `<p class="subtle">스카우트 리포트 (실제와 다를 수 있음) · 예상 종합 ${p.report.ovr} (${p.report.ovr - (p.report.err ?? 4)}~${p.report.ovr + (p.report.err ?? 4)}, 세부 숫자 기준)</p><div class="bars">${ratingBars(p, p.report.keys, true)}</div>
       <p class="subtle">메모: ${esc(p.report.note)}</p>`;
   } else if (p.type === 'H') {
     const defs = Object.entries(r.def).sort((a, b) => b[1] - a[1]).map(([pos, v]) => `${POS_KO[pos]} ${R(v)}`).join(' · ');

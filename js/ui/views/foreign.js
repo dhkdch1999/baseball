@@ -44,12 +44,13 @@ export function renderForeignStep(el, lg, rerender) {
     || (filter === 'H' && !p.asia && p.type === 'H')
     || (filter === 'asia' && p.asia))
     .sort((a, b) => b.report.ovr - a.report.ovr);
+  const shown = pool.length;
   const cands = pool.map((p) => {
     const full = p.asia ? sl.asia >= sl.maxAsia : sl.reg >= sl.maxReg;
-    const lo = p.report.ovr - 5, hi = p.report.ovr + 5;
+    const e = p.report.err ?? 4, lo = p.report.ovr - e, hi = p.report.ovr + e;
     return `<div class="fx-card cand">
       <div class="fx-head"><div><b>${esc(p.name)}</b> ${p.asia ? '<span class="tag asia">아시아쿼터</span>' : ''} <span class="subtle">${p.type === 'P' ? posLabel(p) : POS_KO[p.pos]} · ${p.age}세 · ${p.type === 'P' ? (p.throws === 'L' ? '좌투' : '우투') : (p.bats === 'L' ? '좌타' : p.bats === 'S' ? '양타' : '우타')}</span></div>
-        <div class="est">예상 종합 <b>${R(lo)}~${R(hi)}</b></div></div>
+        <div class="est">예상 종합 ${R(p.report.ovr)} <span class="subtle">(${Math.round(lo)}~${Math.round(hi)})</span></div></div>
       <div class="bars">${ratingBars(p, p.report.keys, true)}</div>
       <div class="subtle note">스카우트 메모: ${esc(p.report.note)}</div>
       <div class="fx-buy"><span>요구 연봉 <b>${fmtMoney(p.asking.salary)}</b> · 1년</span><button class="primary" data-sign="${p.id}" ${full ? 'disabled title="자리가 없습니다"' : ''}>영입</button></div>
@@ -62,7 +63,7 @@ export function renderForeignStep(el, lg, rerender) {
     <div class="slots">${slotChips(sl)} <span class="subtle">결별을 선택한 선수는 자리 계산에서 빠집니다</span></div>
     <h3>우리 팀 외국인 선수</h3>
     <div class="fx-grid">${mineCards}</div>
-    <h3 style="margin-top:18px">영입 후보</h3>
+    <h3 style="margin-top:18px">영입 후보 <span class="subtle">${(lg.foreignPool || []).length}명</span></h3>
     <nav class="tabs">${[['all', '전체'], ['SP', '선발'], ['RP', '불펜'], ['H', '타자'], ['asia', '아시아쿼터']].map(([k, v]) => `<button data-ff="${k}" class="${filter === k ? 'active' : ''}">${v}</button>`).join('')}</nav>
     <div class="fx-grid">${cands}</div>
     <div class="row" style="margin-top:14px"><button class="primary" id="oNext">외국인 선수 확정 → FA 시장</button>

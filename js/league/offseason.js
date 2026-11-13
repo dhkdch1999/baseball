@@ -576,12 +576,12 @@ export function startForeignMarket(lg) {
   const used = new Set(allPlayers(lg).map((p) => p.name));
   const pool = [];
   const add = (n, spec) => { for (let i = 0; i < n; i++) pool.push(makeForeignPlayer(rng, { ...spec, usedNames: used })); };
-  add(14, { type: 'P', role: 'SP' });
-  add(5, { type: 'P', role: 'RP' });
-  add(13, { type: 'H' });
-  add(4, { type: 'P', role: 'SP', asia: true });
-  add(3, { type: 'P', role: 'RP', asia: true });
-  add(2, { type: 'H', asia: true });
+  add(28, { type: 'P', role: 'SP' });
+  add(10, { type: 'P', role: 'RP' });
+  add(26, { type: 'H' });
+  add(8, { type: 'P', role: 'SP', asia: true });
+  add(6, { type: 'P', role: 'RP', asia: true });
+  add(4, { type: 'H', asia: true });
   lg.foreignPool = pool;
   lg.nextPlayerId = getNextPlayerId();
   const key = seasonKey(lg.season);
