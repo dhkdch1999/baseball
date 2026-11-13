@@ -54,7 +54,7 @@ function review(lg) {
   const up = changes.filter((c) => c.delta >= 1.5).slice(0, 8);
   const down = changes.filter((c) => c.delta <= -1.5).reverse().slice(0, 8);
   const rank = (lg.finalStandings || []).findIndex((r) => r.id === t.id) + 1;
-  const li = (c) => `<li><a href="#" data-player="${c.id}">${esc(c.name)}</a> (${c.age}세) <b class="${c.delta > 0 ? 'up' : 'down'}">${c.delta > 0 ? '+' : ''}${c.delta.toFixed(1)}</b> → 종합 ${R(c.ovr)}</li>`;
+  const li = (c) => `<li><a href="#" data-player="${c.id}">${esc(c.name)}</a> (${c.age}세) <b class="${c.delta > 0 ? 'up' : 'down'}">${c.delta > 0 ? '+' : ''}${c.delta.toFixed(1)}</b> → 종합 ${R(c.ovr)}${c.why ? ` <span class="subtle">· ${c.why}</span>` : ''}</li>`;
   return `
     <div class="grid2">
       <div><h3>시즌 결과</h3>
@@ -64,7 +64,7 @@ function review(lg) {
         최고 투수 ${h.ace ? `<a href="#" data-player="${h.ace.id}">${esc(h.ace.name)}</a> (${name(h.ace.team)})` : '-'}<br>
         신인왕 ${h.rookie ? `<a href="#" data-player="${h.rookie.id}">${esc(h.rookie.name)}</a> (${name(h.rookie.team)})` : '-'}</p></div>
       <div><h3>우리 팀 변화</h3>
-        <p class="subtle">나이를 한 살 먹고 능력치가 변했습니다. (종합 능력치 변화)</p>
+        <p class="subtle">나이를 한 살 먹고 능력치가 변했습니다. 25세 이하는 1군 출전 시간과 성적이 성장 속도에 반영됩니다. (종합 능력치 변화)</p>
         <div class="grid2"><div><b>성장</b><ul>${up.map(li).join('') || '<li class="subtle">없음</li>'}</ul></div>
         <div><b>하락</b><ul>${down.map(li).join('') || '<li class="subtle">없음</li>'}</ul></div></div>
         ${rep.retired.length ? `<p>은퇴: ${rep.retired.map(esc).join(', ')}</p>` : ''}

@@ -7,7 +7,7 @@ import {
 } from '../data/playerGen.js';
 import { autoRoster, autoDepthChart, equalizeTeams } from '../data/teamGen.js';
 import { makeSchedule } from './schedule.js';
-import { leagueBaseline, war, seasonKey, avg, era } from './stats.js';
+import { leagueBaseline, war, seasonKey, avg, era, ops } from './stats.js';
 import { teamById, myTeam, addNews, allPlayers, allTeamPlayers } from './season.js';
 import { ensureLineup, payroll, TOTAL_MAX, ACTIVE_MAX } from './roster.js';
 
@@ -60,53 +60,128 @@ export function startOffseason(lg) {
 
 // ───────────── 성장 / 노쇠 ─────────────
 
-function growRating(rng, cur, pot, age, kind) {
+/**
+ * 선수마다 고정된 노쇠 성향 (생성 시 정해지지 않은 선수는 id로 결정적으로 만든다)
+ * shift: 전성기/노쇠 시작 나이 이동(-2~+4년), rate: 노쇠 속도 배율(0.45~1.5)
+ */
+export function agingProfile(p) {
+  if (!p.aging) {
+    const r = new Rng('aging', p.id, p.name);
+    const z = clamp(r.normal(0, 1), -2.2, 2.5);
+    p.aging = {
+      shift: Math.round(clamp(z * 1.4, -2, 4)),
+      rate: Math.round(clamp(1 - z * 0.22 + r.normal(0, 0.12), 0.45, 1.5) * 100) / 100,
+    };
+  }
+  return p.aging;
+}
+
+function growRating(rng, cur, pot, age, kind, mod = {}) {
+  const shift = mod.shift || 0, decay = mod.rate || 1, grow = mod.grow ?? 1;
+  const a = age - shift; // '몸 나이'
   let next = cur;
-  if (age <= 27) {
-    const rate = age <= 21 ? 0.22 : age <= 24 ? 0.18 : 0.12;
+  if (a <= 27) {
+    const rate = (age <= 21 ? 0.22 : age <= 24 ? 0.18 : 0.12) * grow;
     next = cur + Math.max(0, pot - cur) * rate + rng.normal(-0.3, 1.5);
     next = Math.min(next, Math.max(cur, pot));
-  } else if (age <= 29) {
-    next = cur + Math.max(0, pot - cur) * 0.04 + rng.normal(-0.2, 1.2);
+  } else if (a <= 30) {
+    // 전성기: 큰 변화 없이 유지 (조금 남은 잠재력은 천천히 채움)
+    next = cur + Math.max(0, pot - cur) * 0.05 + rng.normal(-0.1, 1.1);
+    next = Math.min(next, Math.max(cur, pot));
   } else {
     const slow = kind === 'eye' || kind === 'control' ? 0.6 : 1;
-    next = cur - ((age - 29) * 0.7 + 0.6) * slow + rng.normal(0, 1.2);
+    const drop = (0.5 + (a - 30) * 0.55) * slow * decay;
+    // 해마다 기복이 있다: 가끔은 한 해 버티거나 반등하기도 한다
+    next = cur - drop * (0.4 + rng.next() * 1.2) + rng.normal(0, 1.1);
   }
   return Math.round(clamp(next, 20, 80));
 }
 
-export function developPlayer(rng, p) {
+/**
+ * 25세 이하 선수의 시즌 출전·성적이 성장 속도에 주는 배율과 잠재력 변화
+ * - 1군 주전급 출전: 성장 가속 / 2군(퓨처스)에서 뛰면 기본 / 1군 벤치에만 앉아 있으면 정체
+ * - 좋은 성적: 추가 가속 + 잠재력 소폭 상승(각성), 부진: 조금 감속
+ */
+export function playingTimeFactor(p, e, lgAvg, onActive) {
+  if (p.type === 'H') {
+    const pa = e?.bat?.pa || 0;
+    let f;
+    if (pa >= 400) f = 1.4; else if (pa >= 250) f = 1.25; else if (pa >= 100) f = 1.05;
+    else f = onActive ? 0.75 : 0.95; // 1군 엔트리에서 못 뛰면 오히려 손해, 2군에서는 경기를 뛴다
+    let perf = 0;
+    if (pa >= 80) perf = clamp((ops(e.bat) - lgAvg.ops) / 0.12, -1, 1) * Math.min(1, pa / 300);
+    return { grow: f * (1 + perf * 0.2), perf, sample: pa };
+  }
+  const outs = e?.pit?.outs || 0;
+  const full = p.role === 'SP' ? 360 : 150; // 선발 120이닝 / 불펜 50이닝
+  const t = outs / full;
+  let f;
+  if (t >= 1) f = 1.4; else if (t >= 0.6) f = 1.25; else if (t >= 0.25) f = 1.05;
+  else f = onActive ? 0.75 : 0.95;
+  let perf = 0;
+  if (outs >= 60) perf = clamp((lgAvg.era - era(e.pit)) / 1.3, -1, 1) * Math.min(1, t);
+  return { grow: f * (1 + perf * 0.2), perf, sample: outs };
+}
+
+export function developPlayer(rng, p, ctx = null) {
   p.age++;
   const r = p.ratings, pot = p.potential;
   const before = overall(p);
+  const ag = agingProfile(p);
+  // 출전 시간은 25세 시즌까지만 성장에 반영 (age는 이미 +1 된 상태)
+  const pt = ctx && p.age <= 26 ? playingTimeFactor(p, ctx.e, ctx.lgAvg, ctx.onActive) : null;
+  const mod = { shift: ag.shift, rate: ag.rate, grow: pt ? pt.grow : 1 };
+  p.lastGrowth = pt ? { grow: Math.round(pt.grow * 100) / 100, perf: Math.round(pt.perf * 100) / 100 } : null;
+  const potDecay = (k) => {
+    const a = p.age - ag.shift;
+    if (a > 28) pot[k] = Math.max(r[k], pot[k] - (a > 31 ? 1.5 : 0.5));
+  };
   if (p.type === 'H') {
     for (const k of ['contact', 'power', 'eye', 'avoidK']) {
-      r[k] = growRating(rng, r[k], pot[k], p.age, k);
-      if (p.age > 27) pot[k] = Math.max(r[k], pot[k] - (p.age > 30 ? 1.5 : 0.5));
+      r[k] = growRating(rng, r[k], pot[k], p.age, k, mod);
+      potDecay(k);
     }
     const d0 = r.def[p.pos];
-    r.def[p.pos] = growRating(rng, d0, pot.def ?? d0, p.age, 'def');
+    r.def[p.pos] = growRating(rng, d0, pot.def ?? d0, p.age, 'def', mod);
     const dd = r.def[p.pos] - d0;
     for (const k of Object.keys(r.def)) if (k !== p.pos) r.def[k] = Math.round(clamp(r.def[k] + dd, 20, 80));
-    if (p.age >= 27) r.speed = Math.round(clamp(r.speed - (p.age - 26) * 0.6 + rng.normal(0, 1.2), 20, 80));
+    const a = p.age - ag.shift;
+    if (a >= 28) r.speed = Math.round(clamp(r.speed - (a - 27) * 0.55 * ag.rate * (0.5 + rng.next()) + rng.normal(0, 1.2), 20, 80));
     else r.speed = Math.round(clamp(r.speed + rng.normal(0.3, 1.2), 20, 80));
-    if (p.age >= 31) r.arm = Math.round(clamp(r.arm - 0.8 + rng.normal(0, 1), 20, 80));
+    if (a >= 32) r.arm = Math.round(clamp(r.arm - 0.8 * ag.rate + rng.normal(0, 1), 20, 80));
   } else {
     const stuff0 = r.stuff;
     for (const k of ['control', 'stuff']) {
-      r[k] = growRating(rng, r[k], pot[k], p.age, k);
-      if (p.age > 27) pot[k] = Math.max(r[k], pot[k] - (p.age > 30 ? 1.5 : 0.5));
+      r[k] = growRating(rng, r[k], pot[k], p.age, k, mod);
+      potDecay(k);
     }
-    if (p.age <= 25) r.velo = Math.round(clamp(r.velo + Math.max(0, pot.velo - r.velo) * 0.3 + rng.normal(0, 1.2), 20, 80));
-    else if (p.age >= 30) r.velo = Math.round(clamp(r.velo - (p.age - 29) * 0.55 + rng.normal(0, 1), 20, 80));
+    const a = p.age - ag.shift;
+    if (p.age <= 25) r.velo = Math.round(clamp(r.velo + Math.max(0, pot.velo - r.velo) * 0.3 * mod.grow + rng.normal(0, 1.2), 20, 80));
+    else if (a >= 31) r.velo = Math.round(clamp(r.velo - (a - 30) * 0.5 * ag.rate * (0.5 + rng.next()) + rng.normal(0, 1), 20, 80));
     const dStuff = r.stuff - stuff0;
     for (const x of r.pitches) x.grade = Math.round(clamp(x.grade + dStuff * 0.8 + rng.normal(0, 1.2), 20, 80));
-    if (p.age >= 32) r.stamina = Math.round(clamp(r.stamina - 1 + rng.normal(0, 1), 20, 80));
+    if (a >= 33) r.stamina = Math.round(clamp(r.stamina - ag.rate + rng.normal(0, 1), 20, 80));
   }
   // 어린 선수 잠재력은 변동이 있다 (각성/정체)
   if (p.age <= 24) {
-    const shift = rng.normal(0, 2.2);
+    // 좋은 성적을 낸 어린 선수는 잠재력이 오르기 쉽다(각성), 부진하면 조금 내려간다
+    const shift = rng.normal((pt?.perf || 0) * 1.2, 2.2);
     for (const k of Object.keys(pot)) pot[k] = Math.round(clamp(pot[k] + shift, 20, 80));
+  }
+  // 드물게 오프시즌에 확 성장하는 선수 (폼 교정, 새 구종, 웨이트 효과 등)
+  p.breakout = null;
+  const bChance = p.age <= 23 ? 0.04 : p.age <= 27 ? 0.03 : p.age <= 31 ? 0.015 : 0.006;
+  if (rng.chance(bChance)) {
+    const keys = p.type === 'H' ? ['contact', 'power', 'eye', 'avoidK'] : ['control', 'stuff', 'velo'];
+    const picks = rng.shuffle([...keys]).slice(0, rng.int(1, 2));
+    for (const k of picks) {
+      const jump = Math.round(rng.normal(7, 2.5));
+      const up = Math.max(4, Math.min(13, jump));
+      r[k] = Math.round(clamp(r[k] + up, 20, 80));
+      if (pot[k] != null) pot[k] = Math.round(clamp(Math.max(pot[k], r[k]) + (p.age <= 25 ? 3 : 0), 20, 80));
+      if (k === 'stuff') for (const x of r.pitches) x.grade = Math.round(clamp(x.grade + up * 0.8, 20, 80));
+    }
+    p.breakout = picks;
   }
   p.injury = null;
   p.fatigue = 0;
@@ -176,18 +251,46 @@ export function normalizeRatings(lg) {
 }
 
 /** 성장/노쇠, 은퇴, 계약 만료 처리. 반환: 내 팀 리포트 */
+const BREAKOUT_KO = { contact: '컨택', power: '파워', eye: '선구안', avoidK: '삼진회피', control: '제구', stuff: '구위', velo: '구속' };
+
+function growthNote(p) {
+  if (p.breakout) return `🔥 오프시즌 각성 (${p.breakout.map((k) => BREAKOUT_KO[k]).join('·')})`;
+  const g = p.lastGrowth;
+  if (g) {
+    if (g.perf >= 0.4) return '1군 맹활약';
+    if (g.grow >= 1.2) return '1군 주전 경험';
+    if (g.grow < 0.8) return '1군 벤치에서 출전 부족';
+    if (g.perf <= -0.4) return '1군 부진';
+    return null;
+  }
+  return null;
+}
+
+function leagueAverages(lg, key) {
+  const ps = allPlayers(lg);
+  const b = { ab: 0, h: 0, d: 0, t: 0, hr: 0, bb: 0, hbp: 0, sf: 0 }, q = { er: 0, outs: 0 };
+  for (const p of ps) {
+    const e = p.stats?.[key];
+    if (e?.bat) for (const k of Object.keys(b)) b[k] += e.bat[k] || 0;
+    if (e?.pit) { q.er += e.pit.er; q.outs += e.pit.outs; }
+  }
+  return { ops: b.ab ? ops(b) : 0.72, era: q.outs ? (q.er * 27) / q.outs : 4.3 };
+}
+
 function developAndContracts(lg) {
   const rng = new Rng('offseason', lg.seed, lg.season);
   const key = seasonKey(lg.season);
   const report = { changes: [], retired: [], toFA: [], resigned: [] };
   const my = myTeam(lg);
+  const lgAvg = leagueAverages(lg, key);
 
   for (const t of lg.teams) {
     for (const p of [...t.roster, ...t.reserve]) {
       const played = p.stats?.[key];
       if (played && ((played.bat?.g || 0) >= 20 || (played.pit?.g || 0) >= 10)) p.service++;
-      const delta = developPlayer(rng, p);
-      if (t === my) report.changes.push({ id: p.id, name: p.name, age: p.age, delta, ovr: overall(p) });
+      const delta = developPlayer(rng, p, { e: played, lgAvg, onActive: t.roster.includes(p) });
+      if (t === my) report.changes.push({ id: p.id, name: p.name, age: p.age, delta, ovr: overall(p), why: growthNote(p) });
+      if (p.breakout && (t === my || overall(p) >= 50)) addNews(lg, `[각성] ${t.short} ${p.name}(${p.age}세), 비시즌 동안 ${p.breakout.map((k) => BREAKOUT_KO[k]).join('·')} 급성장`, t.id);
     }
   }
   for (const p of lg.freeAgents) developPlayer(rng, p);
@@ -251,10 +354,11 @@ function developAndContracts(lg) {
 }
 
 function retires(rng, p) {
-  if (p.age >= 41) return true;
-  if (p.age < 34) return false;
+  if (p.age >= 43) return true;
+  const a = p.age - Math.max(0, agingProfile(p).shift) * 0.6;
+  if (a < 34) return false;
   const ov = overall(p);
-  return rng.chance(0.1 * (p.age - 33) + (ov < 45 ? 0.3 : ov < 50 ? 0.12 : 0));
+  return rng.chance(0.1 * (a - 33) + (ov < 45 ? 0.3 : ov < 50 ? 0.12 : 0) - (ov >= 60 ? 0.1 : 0));
 }
 
 function setAsking(rng, p, fromTeam) {
