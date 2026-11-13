@@ -45,4 +45,5 @@ export const PITCH_TYPES = {
 };
 
 /** 구속 능력치 → 직구 평균 구속(km/h). 50 → 144km */
-export const veloKmh = (veloRating) => Math.round(144 + (veloRating - 50) * 0.36);
+// 50 = 145km(리그 평균 직구), 1단계(5점)마다 약 2.5km. 80이면 160km, 30이면 135km
+export const veloKmh = (veloRating) => Math.round(145 + (veloRating - 50) * 0.5);

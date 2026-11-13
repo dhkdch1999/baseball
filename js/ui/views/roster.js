@@ -2,7 +2,7 @@
 import { app, render, persist } from '../app.js';
 import { myTeam, seasonDates } from '../../league/season.js';
 import { autoDepthChart } from '../../data/teamGen.js';
-import { promote, demote, release, ensureLineup, payroll, ACTIVE_MAX, TOTAL_MAX } from '../../league/roster.js';
+import { promote, demote,  release, ensureLineup, payroll, ACTIVE_MAX, TOTAL_MAX } from '../../league/roster.js';
 import { seasonKey, avg, ops, era } from '../../league/stats.js';
 import { offenseScore } from '../../data/playerGen.js';
 import { esc, R, OVR, POT, pLink, posLabel, statusBadges, fmtMoney, table, toast, POS_SHORT_KO, fmt3, fmt2 } from '../common.js';
@@ -10,6 +10,8 @@ import { esc, R, OVR, POT, pLink, posLabel, statusBadges, fmtMoney, table, toast
 const POSS = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
 let tab = 'lineup';
 let draft = null; // 편집 중인 라인업
+let cmpSlot = null; // 비교 중인 타순 (0~8)
+let cmpReserve = false; // 2군 선수도 비교
 
 function seasonLine(lg, p) {
   const e = p.stats?.[seasonKey(lg.season)];
@@ -22,19 +24,74 @@ function lineupTab(lg, t) {
   const hitters = t.roster.filter((p) => p.type === 'H');
   const rows = draft.map((s, i) => {
     const p = hitters.find((h) => h.id === s.id);
-    return `<tr>
+    return `<tr class="${cmpSlot === i ? 'cmp-sel' : ''}">
       <td>${i + 1}</td>
       <td><select data-pos="${i}">${POSS.map((x) => `<option ${x === s.pos ? 'selected' : ''} value="${x}">${POS_SHORT_KO[x]}</option>`).join('')}</select></td>
       <td><select data-pl="${i}">${hitters.map((h) => `<option value="${h.id}" ${h.id === s.id ? 'selected' : ''} ${h.injury ? 'disabled' : ''}>${esc(h.name)} (${POS_SHORT_KO[h.pos]})${h.injury ? ' - 부상' : ''}</option>`).join('')}</select></td>
       <td>${p ? R(p.ratings.contact) : ''}</td><td>${p ? R(p.ratings.power) : ''}</td><td>${p ? R(p.ratings.eye) : ''}</td><td>${p ? R(p.ratings.speed) : ''}</td>
       <td>${p && s.pos !== 'DH' ? R(p.ratings.def[s.pos] ?? 25) : '-'}</td>
       <td class="subtle">${p ? seasonLine(lg, p) : ''}</td>
-      <td><button data-up="${i}" ${i === 0 ? 'disabled' : ''}>▲</button><button data-down="${i}" ${i === 8 ? 'disabled' : ''}>▼</button></td>
+      <td class="nowrap"><button data-up="${i}" ${i === 0 ? 'disabled' : ''}>▲</button><button data-down="${i}" ${i === 8 ? 'disabled' : ''}>▼</button>
+        <button data-cmp="${i}" class="${cmpSlot === i ? 'primary' : ''}">비교</button></td>
     </tr>`;
   });
   return `${autoBox(t)}<p class="subtle">타순과 수비 위치를 바꾼 뒤 <b>라인업 저장</b>을 누르세요 (저장하면 직접 관리 모드로 바뀝니다). 부상자가 생기면 경기 전에 자동으로 대체됩니다.</p>
-    ${table(['타순', '위치', '선수', '컨택', '파워', '선구', '주력', '수비', '시즌 성적', '순서'], rows)}
-    <div class="row"><button class="primary" id="rSave">라인업 저장</button><button id="rAuto">AI 자동 편성</button><button id="rReset">되돌리기</button></div>`;
+    ${table(['타순', '위치', '선수', '컨택', '파워', '선구', '주력', '수비', '시즌 성적', '순서 · 비교'], rows)}
+    <div class="row"><button class="primary" id="rSave">라인업 저장</button><button id="rAuto">AI 자동 편성</button><button id="rReset">되돌리기</button></div>
+    ${cmpSlot != null ? comparePanel(lg, t, hitters) : '<p class="subtle">각 줄의 <b>비교</b>를 누르면 그 자리의 주전과 교체 후보들의 능력치를 나란히 비교할 수 있습니다.</p>'}`;
+}
+
+const D = (v) => Math.max(20, Math.min(80, Math.round(v / 5) * 5));
+
+/** 숫자 + 주전 대비 차이 */
+function vs(v, base) {
+  const d = D(v) - D(base);
+  const cls = d > 0 ? 'up' : d < 0 ? 'down' : 'same';
+  return `<span class="r g${D(v)}">${D(v)}</span><small class="dv ${cls}">${d > 0 ? '+' + d : d < 0 ? d : '='}</small>`;
+}
+
+function comparePanel(lg, t, hitters) {
+  const slot = draft[cmpSlot];
+  const pos = slot.pos;
+  const starter = hitters.find((h) => h.id === slot.id) || [...t.roster, ...t.reserve].find((h) => h.id === slot.id);
+  if (!starter) return '';
+  const defOf = (p) => (pos === 'DH' ? null : p.ratings.def[pos] ?? 25);
+  const inLineup = new Map(draft.map((x, i) => [x.id, i]));
+  let pool = hitters.filter((h) => h.id !== starter.id);
+  if (cmpReserve) pool = pool.concat(t.reserve.filter((h) => h.type === 'H'));
+  // 이 자리에 맞는 순서: 공격 + (수비 위치면) 수비
+  const fit = (p) => offenseScore(p) + (pos === 'DH' ? 0 : (defOf(p) - 50) * (['C', 'SS', 'CF', '2B'].includes(pos) ? 0.5 : 0.3));
+  pool.sort((a, b) => fit(b) - fit(a));
+  const sOff = offenseScore(starter), sFit = fit(starter);
+  const line = (p, isStarter) => {
+    const r = p.ratings, b = starter.ratings;
+    const where = inLineup.has(p.id) && !isStarter ? `<span class="tag">${inLineup.get(p.id) + 1}번 타자</span>` : t.reserve.includes(p) ? '<span class="tag asia">2군</span>' : '';
+    const offD = Math.round(offenseScore(p) - sOff), fitD = Math.round(fit(p) - sFit);
+    const cell = (k) => (isStarter ? `<span class="r g${D(r[k])}">${D(r[k])}</span>` : vs(r[k], b[k]));
+    const dcell = pos === 'DH' ? '-' : isStarter ? `<span class="r g${D(defOf(p))}">${D(defOf(p))}</span>` : vs(defOf(p), defOf(starter));
+    const btn = isStarter ? '<b>주전</b>'
+      : t.reserve.includes(p) ? `<button data-swapin="${p.id}" data-res="1">1군 올리고 투입</button>`
+      : `<button data-swapin="${p.id}" class="primary">${inLineup.has(p.id) ? '자리 맞바꾸기' : '투입'}</button>`;
+    return `<tr class="${isStarter ? 'starter' : ''}">
+      <td>${pLink(p)} <span class="subtle">${POS_SHORT_KO[p.pos]} · ${p.age}세 · ${p.bats === 'L' ? '좌타' : p.bats === 'S' ? '양타' : '우타'}</span> ${where} ${p.injury ? '<span class="badge inj">부상</span>' : ''}</td>
+      <td>${cell('contact')}</td><td>${cell('power')}</td><td>${cell('eye')}</td><td>${cell('avoidK')}</td><td>${cell('speed')}</td><td>${dcell}</td>
+      <td>${isStarter ? '기준' : `<b class="${offD > 0 ? 'up' : offD < 0 ? 'down' : ''}">${offD > 0 ? '+' : ''}${offD}</b>`}</td>
+      <td>${isStarter ? '기준' : `<b class="${fitD > 0 ? 'up' : fitD < 0 ? 'down' : ''}">${fitD > 0 ? '+' : ''}${fitD}</b>`}</td>
+      <td class="subtle">${seasonLine(lg, p) || '-'}</td>
+      <td>${btn}</td></tr>`;
+  };
+  const best = pool.find((p) => !p.injury && !t.reserve.includes(p));
+  const verdict = best && fit(best) > sFit + 1
+    ? `<p class="cmp-verdict">💡 <b>${esc(best.name)}</b>이(가) 이 자리에 더 적합합니다 (종합 적합도 +${Math.round(fit(best) - sFit)}).</p>`
+    : `<p class="cmp-verdict ok">✅ 현재 주전 <b>${esc(starter.name)}</b>이(가) 1군에서 이 자리에 가장 적합합니다.</p>`;
+  return `<div class="cmp-panel">
+    <div class="cmp-head"><h3>${cmpSlot + 1}번 타자 · ${pos === 'DH' ? '지명타자' : POS_SHORT_KO[pos] + ' 수비'} — 주전 vs 교체 후보</h3>
+      <label class="chk"><input type="checkbox" id="cmpRes" ${cmpReserve ? 'checked' : ''}> 2군 선수도 보기</label>
+      <button id="cmpClose">닫기</button></div>
+    <p class="subtle">숫자 옆 <span class="up">+</span>/<span class="down">−</span>는 주전 대비 차이입니다. 공격력은 컨택·파워·선구안·삼진회피·주력의 가중 합, 적합도는 여기에 ${pos === 'DH' ? '(지명타자라 수비 제외)' : '이 포지션 수비력까지 더한 값'}입니다. 다른 포지션이 주 포지션인 선수는 수비가 크게 떨어질 수 있습니다.</p>
+    ${verdict}
+    ${table(['선수', '컨택', '파워', '선구안', '삼진회피', '주력', pos === 'DH' ? '수비' : `수비(${POS_SHORT_KO[pos]})`, '공격력', '적합도', '시즌 성적', ''], [line(starter, true), ...pool.map((p) => line(p, false))], 'cmp-tbl')}
+  </div>`;
 }
 
 function autoBox(t) {
@@ -86,7 +143,7 @@ export const rosterView = {
     const live = app.live && !app.live.done;
     if (live) el.querySelector('.card').insertAdjacentHTML('afterbegin', '<p class="warn">경기 진행 중에는 변경 사항이 다음 경기부터 적용됩니다.</p>');
 
-    el.querySelectorAll('[data-rtab]').forEach((b) => b.onclick = () => { tab = b.dataset.rtab; draft = null; render(); });
+    el.querySelectorAll('[data-rtab]').forEach((b) => b.onclick = () => { tab = b.dataset.rtab; draft = null; cmpSlot = null; render(); });
     const on = (sel, fn) => el.querySelectorAll(sel).forEach((b) => b.onclick = () => fn(b));
     // 라인업
     el.querySelectorAll('[data-pos]').forEach((s) => s.onchange = () => { draft[+s.dataset.pos].pos = s.value; render(); });
@@ -104,7 +161,20 @@ export const rosterView = {
       toast('라인업 저장');
       render();
     });
-    on('#rReset', () => { draft = null; render(); });
+    on('#rReset', () => { draft = null; cmpSlot = null; render(); });
+    on('[data-cmp]', (b) => { const i = +b.dataset.cmp; cmpSlot = cmpSlot === i ? null : i; render(); setTimeout(() => document.querySelector('.cmp-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0); });
+    on('#cmpClose', () => { cmpSlot = null; render(); });
+    const cr = el.querySelector('#cmpRes'); if (cr) cr.onchange = () => { cmpReserve = cr.checked; render(); };
+    on('[data-swapin]', (b) => {
+      const id = Number(b.dataset.swapin);
+      if (b.dataset.res) { const r = promote(t, id); if (!r.ok) return toast(r.msg + ' — 먼저 1군에서 한 명을 2군으로 내리세요', 'error'); persist(); }
+      const other = draft.findIndex((x) => x.id === id);
+      const cur = draft[cmpSlot].id;
+      if (other >= 0) draft[other].id = cur; // 이미 라인업에 있으면 두 선수 자리 교환
+      draft[cmpSlot].id = id;
+      toast('라인업에 반영했습니다. 저장을 눌러야 적용됩니다');
+      render();
+    });
     const am = el.querySelector('#rAutoMode');
     if (am) am.onchange = () => { t.autoLineup = am.checked; if (am.checked) autoDepthChart(t); draft = null; persist(); render(); };
     on('#rAuto', () => { autoDepthChart(t); t.autoLineup = true; draft = null; persist(); toast('AI가 라인업과 투수진을 편성했습니다'); render(); });

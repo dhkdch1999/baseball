@@ -245,6 +245,15 @@ export function makeProspect(rng, usedNames) {
     const cur = k === 'def' ? p.ratings.def[p.pos] : p.ratings[k];
     pot[k] = Math.round(Math.max(20, Math.min(80, cur + gap * (0.7 + rng.next() * 0.6))));
   }
+  if (isP) {
+    // 요즘 신인 투수는 구속이 빠르다: 고졸 평균 약 143km, 잠재 평균 약 148km (상위권은 150km 중반)
+    const v0 = p.ratings.velo;
+    const v = r8(rng.normal(age <= 19 ? 46 : 48, 6.5));
+    p.ratings.velo = v;
+    p.ratings.stuff = r8(p.ratings.stuff + (v - v0) * 0.35);
+    pot.stuff = Math.max(pot.stuff, p.ratings.stuff);
+    pot.velo = r8(v + Math.max(2, rng.normal(age <= 19 ? 10 : 7, 4)));
+  }
   p.scoutNoise = rng.normal(0, 6);
   p.contract = null;
   return p;
